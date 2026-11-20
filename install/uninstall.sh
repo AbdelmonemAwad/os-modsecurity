@@ -13,7 +13,7 @@
 
 # which of the two packages install/install.sh installed, read before its folder goes
 OURS=
-[ -f /usr/local/share/os-modsecurity/packages-installed ] &&     OURS=$(cat /usr/local/share/os-modsecurity/packages-installed)
+[ -f /usr/local/share/os-modsecurity/packages-installed ] && OURS=$(cat /usr/local/share/os-modsecurity/packages-installed)
 
 # Apache first, while the rc script that stops it is there
 /usr/local/etc/rc.d/modsecurity onestop > /dev/null 2>&1 || true
@@ -54,16 +54,19 @@ find /var/lib/php/cache -maxdepth 1 -iname '*_views_opnsense_modsecurity_*' -del
 # the packages install/install.sh installed, ModSecurity's module before the Apache it needs, each only
 # when no other package needs it
 KEPT=
+# (a package already gone is neither; a query pkg could not answer keeps it, as pkg delete would take
+# every package needing it along)
 for p in ap24-mod_security apache24; do
+    pkg info -e "$p" > /dev/null 2>&1 || continue
     case " ${OURS} " in
     *" $p "*)
-        if [ -z "$(pkg query '%rn' "$p" 2> /dev/null)" ] && pkg delete -y "$p" > /dev/null 2>&1; then
+        if NEEDS=$(pkg query '%rn' "$p" 2> /dev/null) && [ -z "${NEEDS}" ] && pkg delete -y "$p" > /dev/null 2>&1; then
             echo "The package $p, which install/install.sh installed, removed."
         else
             KEPT="${KEPT} $p"
         fi
         ;;
-    *) pkg info -e "$p" > /dev/null 2>&1 && KEPT="${KEPT} $p" ;;
+    *) KEPT="${KEPT} $p" ;;
     esac
 done
 if [ -n "${KEPT}" ]; then

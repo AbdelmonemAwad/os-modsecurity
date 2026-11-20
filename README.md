@@ -316,7 +316,8 @@ sites; the page in a browser.
 It is not in the OPNsense plugin repository, so there is no `pkg install os-modsecurity`.
 
 **From XGS: Updates' Plugins tab**, with os-xgs-npu 0.2.0-alpha.1 or later: Install takes the latest
-release, checked against its signature, and runs its `install/install.sh`.
+release, checked against its signature, and runs its `install/install.sh` - 1.0.1 or later where Apache is
+not installed yet, as 1.0.0 stopped there. os-xgs-npu's own update installs it the same way.
 
 **From a checkout** of this repository, on the firewall, as root:
 
