@@ -38,7 +38,9 @@ installed), one page, off by default:
   (`http://` or `https://`, an address or a name, a port, a path), its certificate of System: Trust or
   none, its mode and its paranoia level. A host name belongs to one site: the page refuses a name another
   site has, or one under another site's wildcard, since Apache would give such a request to one of them by
-  the order of its configuration, which the page does not show. A request for a name no site has meets a
+  the order of its configuration, which the page does not show - at a site's Save, and when the grid's
+  switch turns a site on (OPNsense's own switch saves without the model's checks, so the plugin checks
+  first and says why in OPNsense's dialog). A request for a name no site has meets a
   catch-all that refuses it with 403, not inspected.
 - **modes** - *Detection only*, every new site's first mode: each request is inspected and what the rules
   find is written to the audit log, and the request passes. *Blocking*: a request the Core Rule Set judges

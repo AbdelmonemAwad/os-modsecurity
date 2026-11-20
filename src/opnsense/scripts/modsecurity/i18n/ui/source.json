@@ -92,6 +92,7 @@
  "The web GUI listens on port %s on %s. Move it in System: Settings: Administration - another TCP port, or Listen interfaces without the ones chosen here - or choose another port here.",
  "The web GUI listens on port %s on every interface. Move it in System: Settings: Administration - another TCP port, or Listen interfaces without the ones chosen here - or choose another port here.",
  "This certificate has no private key in System: Trust: a site cannot be served with it.",
+ "This site cannot be enabled",
  "Version %s, %s rule files, installed %s.",
  "Web Application Firewall",
  "XGS",
