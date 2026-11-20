@@ -25,8 +25,8 @@ certificates - are kept until Apache runs the new ones: a graceful restart Apach
 another program holds) puts them back and starts Apache with them again; a start that fails puts them
 back and leaves Apache stopped, as it was. A setting that cannot be served is refused and said, never
 changed: the web GUI on a port chosen here (settled point 8a: how to move the GUI is said, and the plugin
-never moves it), no Core Rule Set, no address to listen on. A site that fails its checks
-(common.check_sites) is left out and named.
+never moves it), no Core Rule Set, no address to listen on, one port for both kinds. A site that fails
+its checks (common.check_sites) is left out and named.
 
 Nothing here changes the firewall's rules: a site reached from another network needs a rule there that
 passes its port to this firewall, which the owner makes.
@@ -97,6 +97,7 @@ MESSAGES = {
     'noaddress': 'the interfaces chosen have no address to listen on now',
     'module': 'Apache has no module the configuration needs',
     'certificate': "a site's certificate is not in System: Trust with its private key",
+    'sameport': 'HTTP and HTTPS need a port each',
 }
 
 
@@ -253,6 +254,9 @@ def plan(root, conf, entries, listen_found=None, run=subprocess.run):
     crs = crs_installed()
     if crs is None:
         raise Refused('norules')
+    if conf['http_port'] and conf['http_port'] == conf['https_port']:
+        # one port read twice - 080 and 80 too, which the model compares as numbers now: two Listen lines
+        raise Refused('sameport')
     conflicts = common.gui_conflicts(common.webgui(root), [conf['http_port'], conf['https_port']],
                                      conf['interfaces'])
     if conflicts:

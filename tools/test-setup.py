@@ -548,6 +548,10 @@ got = apply(change=lambda r: [r.find('OPNsense/ModSecurity/sites').remove(s) for
 check('no site to publish: Apache stopped, said', [got['status'], got['state'], rc_calls()], ['ok', 'nosite', ['onestop']])
 got = apply(where=None, change=lambda r: setattr(r.find('OPNsense/ModSecurity/general/interfaces'), 'text', 'opt2'))
 check('Listen interfaces with no address now: refused', got['code'], 'noaddress')
+got = apply(change=lambda r: [setattr(r.find('OPNsense/ModSecurity/general/http_port'), 'text', '080'),
+                              setattr(r.find('OPNsense/ModSecurity/general/https_port'), 'text', '80')])
+check('one port for both kinds - 080 and 80 written: refused before Apache is asked, as the model refuses it',
+      [got['code'], rc_calls(), [c for c in calls if c[0] == common.HTTPD]], ['sameport', [], []])
 
 # --- Apache's test, the start, the reload ---------------------------------------------------------------
 
@@ -847,6 +851,10 @@ check('the last Apply refused, Apache not running: failed, with its code', [got[
 config(change=lambda r: setattr(r.find('OPNsense/ModSecurity/general/interfaces'), 'text', ''))
 got = status.status(CONFIG)
 check('the GUI on a port chosen here: said', [c['port'] for c in got['conflicts']], [80, 443])
+config(change=lambda r: [setattr(r.find('OPNsense/ModSecurity/general/interfaces'), 'text', ''),
+                         setattr(r.find('interfaces/lan/descr'), 'text', 'Office')])
+check('the GUI\'s interfaces named by their descriptions, as the page names them', status.status(CONFIG)['conflicts'][0],
+      {'port': 80, 'interfaces': ['Office']})
 config(change=lambda r: setattr(r.find('OPNsense/ModSecurity/general/enabled'), 'text', '0'))
 got = status.status(CONFIG)
 check('off: nothing to say of sites left out or conflicts', [got['state'], got['skipped'], got['conflicts']], ['off', [], []])

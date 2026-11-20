@@ -86,6 +86,7 @@
         /* why an Apply was refused, by setup.py's code, in the page's language; its detail after it */
         const failures = {
             'packages': "{{ lang._('apache24 and ap24-mod_security are not installed: pkg install apache24 ap24-mod_security') }}",
+            'sameport': "{{ lang._('HTTP and HTTPS need a port each.') }}",
             'norules': "{{ lang._('The Core Rule Set is not installed: Install it in Settings.') }}",
             'gui': "{{ lang._('The web GUI listens on a port chosen here:') }}",
             'noaddress': "{{ lang._('The Listen interfaces have no address now:') }}",
@@ -157,6 +158,12 @@
             return ts ? new Date(ts * 1000).toLocaleString() : '-';
         }
 
+        /* Text already made plain, given to card() - which makes its values plain - as it would come: escaped
+           once more, so a message that holds "&lt;" shows it, not "<". */
+        function esc(text) {
+            return $('<div/>').text(text).html();
+        }
+
         /* the interfaces by their descriptions, or every address */
         function where(list) {
             return list && list.length ? $.map(list, function (i) {
@@ -199,7 +206,7 @@
             if (data.state === 'running') {
                 sub = plain("{{ lang._('pid %s') }}").replace('%s', String(data.pid));
             } else if (data.state === 'failed') {
-                sub = failure(data.last);
+                sub = esc(failure(data.last));
             }
             $cards.append(card(state[0], 'fa-shield', "{{ lang._('Service') }}", state[1], sub));
 
@@ -214,12 +221,23 @@
                 crs ? (crs.source === 'release' ? plain("{{ lang._('signed release, %s') }}").replace('%s', plain(crs.signed_with)) :
                     plain("{{ lang._('installed by hand') }}")) : "{{ lang._('Install it in Settings') }}"));
 
-            const ports = $.map([data.ports.http, data.ports.https], function (p) {
+            /* the ports Apache listens on while it runs (the last Apply's, which status.py gives with its pid):
+               a port with no site of its kind is not listened on; else the ports Settings has */
+            let ports = $.map([data.ports.http, data.ports.https], function (p) {
                 return p ? String(p) : null;
             });
+            if (data.state === 'running' && data.listen && data.listen.length) {
+                ports = [];
+                $.each(data.listen, function (i, item) {
+                    const port = String(item).split(':').pop();
+                    if (ports.indexOf(port) < 0) {
+                        ports.push(port);
+                    }
+                });
+            }
             const conflicts = data.conflicts || [];
             $cards.append(card(conflicts.length ? 'bad' : '', 'fa-plug', "{{ lang._('Listening') }}",
-                ports.length ? ports.join(', ') : '-', where(data.interfaces)));
+                ports.length ? ports.join(', ') : '-', esc(where(data.interfaces))));
 
             if (data.xgs) {
                 $cards.append(card('', 'fa-microchip', "{{ lang._('Hardware') }}", "{{ lang._('host processor') }}",

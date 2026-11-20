@@ -42,7 +42,8 @@ class ModSecurity extends BaseModel
         }
 
         if ($validateFullModel || $general->isFieldChanged()) {
-            if ($http !== '' && $http === $https) {
+            /* as numbers: 080 and 80 are one port, as Apache and the scripts read them */
+            if ($http !== '' && $https !== '' && (int)$http === (int)$https) {
                 $messages->appendMessage(new Message(gettext('HTTP and HTTPS need a port each.'), 'general.https_port'));
             }
             if ($on && $http === '' && $https === '') {
@@ -55,12 +56,12 @@ class ModSecurity extends BaseModel
                 $interfaces = array_values(array_filter(explode(',', (string)$general->interfaces), 'strlen'));
                 $gui = WebGui::listeners($this->webgui());
                 foreach (WebGui::conflicts($gui, [$http, $https], $interfaces) as $conflict) {
-                    $field = (string)$conflict['port'] === $http ? 'general.http_port' : 'general.https_port';
+                    $field = $http !== '' && (int)$conflict['port'] === (int)$http ? 'general.http_port' : 'general.https_port';
                     if (count($conflict['interfaces'])) {
                         $text = sprintf(
                             gettext('The web GUI listens on port %s on %s. Move it in System: Settings: Administration - another TCP port, or Listen interfaces without the ones chosen here - or choose another port here.'),
                             $conflict['port'],
-                            implode(', ', $conflict['interfaces'])
+                            implode(', ', $this->interfaceNames($conflict['interfaces']))
                         );
                     } else {
                         $text = sprintf(
@@ -159,6 +160,21 @@ class ModSecurity extends BaseModel
             }
         }
         return $messages;
+    }
+
+    /**
+     * Interfaces by the names the page gives them: their descriptions, else the key in capitals, as status.py
+     * and OPNsense's own pages name them.
+     */
+    protected function interfaceNames(array $keys)
+    {
+        $config = Config::getInstance()->object();
+        $out = [];
+        foreach ($keys as $key) {
+            $descr = isset($config->interfaces->$key) ? trim((string)$config->interfaces->$key->descr) : '';
+            $out[] = $descr !== '' ? $descr : strtoupper($key);
+        }
+        return $out;
     }
 
     /**

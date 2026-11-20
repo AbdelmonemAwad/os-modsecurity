@@ -78,7 +78,9 @@ def status(config=None):
         'listen': last.get('listen', []) if pid else [],
         'gui': {'ports': gui['ports'], 'interfaces': [{'key': k, 'descr': descr.get(k, {}).get('descr', k.upper())}
                                                       for k in gui['interfaces']]},
-        'conflicts': conflicts if conf['enabled'] else [],
+        # the GUI's interfaces where it holds a port chosen here, by their descriptions, as the page names them
+        'conflicts': [dict(c, interfaces=[descr.get(k, {}).get('descr', k.upper()) for k in c['interfaces']])
+                      for c in conflicts] if conf['enabled'] else [],
         'crs': {k: crs.get(k) for k in ('version', 'source', 'tag', 'signed_with', 'installed_at', 'rules', 'line',
                                         'tested')} if crs else None,
         'last': {k: last.get(k) for k in ('at', 'status', 'state', 'code', 'detail', 'message', 'sites')} if last else None,

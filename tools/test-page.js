@@ -324,7 +324,8 @@ const at = new Date(1795000000 * 1000).toLocaleString();
 const base = {
     state: 'running', enabled: true, pid: 4242,
     counts: {sites: 3, enabled: 3, blocking: 1, detection: 1, tls: 1, usable: 2},
-    skipped: [], ports: {http: 80, https: 443}, interfaces: [{key: 'wan', descr: 'WAN'}], listen: ['203.0.113.1:443'],
+    skipped: [], ports: {http: 80, https: 443}, interfaces: [{key: 'wan', descr: 'WAN'}],
+    listen: ['203.0.113.1:80', '203.0.113.1:443', '[2001:db8::1]:443'],
     gui: {ports: [80, 4443], interfaces: [{key: 'lan', descr: 'LAN'}]}, conflicts: [],
     crs: {version: '4.25.2', source: 'release', tag: 'crs-4.25.2', signed_with: 'xgs-release-key-13ed7f86.pub',
         installed_at: 1795000000, rules: 27, line: '4.25', tested: true},
@@ -412,6 +413,13 @@ check('each reason by its code, in the page\'s words, the detail after them; an 
 
 status(Object.assign({}, base, {state: 'stopped', pid: null}));
 check('on, not running: red, Apply starts it', [cards()[0].cls, cards()[0].sub], ['bad', 'Apply starts it']);
+status(Object.assign({}, base, {state: 'failed', pid: null, interfaces: [{key: 'opt1', descr: 'R&amp;amp;D'}],
+    last: {status: 'failed', code: 'config', detail: 'AH00526: &amp;lt;Location&amp;gt;', at: 1}}));
+check('a message or a description holding an entity: shown as it is written, made plain once, not twice',
+    [cards()[0].sub, cards()[3].sub], ['Apache refused the configuration, and runs the one before: AH00526: &lt;Location&gt;',
+        'R&amp;D']);
+status(Object.assign({}, base, {state: 'failed', pid: null, last: {status: 'failed', code: 'sameport', detail: '', at: 1}}));
+check('one port for both kinds: said in the words of the model\'s own refusal', cards()[0].sub, 'HTTP and HTTPS need a port each.');
 
 status(Object.assign({}, base, {conflicts: [{port: 443, interfaces: []}, {port: 80, interfaces: ['lan', 'opt1']}]}));
 check('the web GUI on a port chosen here: the Listening card red, the line with how to move it', [cards()[3].cls, shown('ms-gui')],
@@ -423,7 +431,11 @@ check('the Core Rule Set installed by hand: said so on its card and in Settings'
     element('ms-crs-line').text.split('. ').slice(-1)[0]], ['installed by hand',
     'Installed by hand from an archive: its signature was checked where it was fetched, not here.']);
 
-status(Object.assign({}, base, {interfaces: [], ports: {http: null, https: 8443}}));
+status(Object.assign({}, base, {listen: ['203.0.113.1:443', '[2001:db8::1]:443']}));
+check('running: the ports Apache listens on, not a port of Settings no site of its kind uses', cards()[3].value, '443');
+status(Object.assign({}, base, {state: 'stopped', pid: null, listen: []}));
+check('not running: the ports Settings has', cards()[3].value, '80, 443');
+status(Object.assign({}, base, {interfaces: [], ports: {http: null, https: 8443}, listen: ['0.0.0.0:8443', '[::]:8443']}));
 check('every address, HTTPS alone on another port', [cards()[3].value, cards()[3].sub], ['8443', 'every address']);
 
 status({state: 'unreadable', error: {message: 'config.xml could not be read: <x>'}});

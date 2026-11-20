@@ -322,6 +322,8 @@ namespace {
             new Xml('disablehttpredirect', '1')])]),
         new Xml('cert', '', [new Xml('refid', 'withkey'), new Xml('prv', 'LS0tLS1')]),
         new Xml('cert', '', [new Xml('refid', 'nokey'), new Xml('prv', '')]),
+        new Xml('interfaces', '', [new Xml('lan', '', [new Xml('if', 'oxp1'), new Xml('descr', 'Office')]),
+            new Xml('opt1', '', [new Xml('if', 'oxp2')])]),
     ]);
     check(WebGui::fromConfig() === ['protocol' => 'https', 'port' => '', 'interfaces' => 'lan', 'disablehttpredirect' => '1'],
           'config.xml\'s web GUI read by its elements, one that is there with no text kept as there');
@@ -373,13 +375,20 @@ namespace {
     gui(new Xml('webgui', '', [new Xml('protocol', 'https'), new Xml('interfaces', 'lan')]));
     check(saved($on, ['enabled'], $sites) === [], 'the GUI on its LAN, the plugin on WAN: saved');
     $got = saved(array_merge($on, ['interfaces' => '']), ['interfaces'], $sites);
-    check(count($got) === 2 && strpos($got[0][1], 'The web GUI listens on port 80 on lan.') === 0,
-          'the GUI on its LAN, the plugin on every address: refused, the GUI\'s interfaces named');
+    check(count($got) === 2 && strpos($got[0][1], 'The web GUI listens on port 80 on Office.') === 0,
+          'the GUI on its LAN, the plugin on every address: refused, the GUI\'s interfaces named by their descriptions');
+    gui(new Xml('webgui', '', [new Xml('protocol', 'https'), new Xml('interfaces', 'opt1')]));
+    $got = saved(array_merge($on, ['interfaces' => '']), ['interfaces'], $sites);
+    check(strpos($got[0][1] ?? '', 'The web GUI listens on port 80 on OPT1.') === 0,
+          'an interface with no description: its key in capitals, as OPNsense names it');
+    gui(new Xml('webgui', '', [new Xml('protocol', 'https'), new Xml('interfaces', 'lan')]));
     $got = saved(array_merge($on, ['interfaces' => 'wan,lan']), ['interfaces'], $sites);
     check(count($got) === 2, 'the GUI on its LAN, the plugin on WAN and LAN: refused');
     gui($moved);
     check(saved(array_merge($on, ['https_port' => '80']), ['https_port'], $sites) ===
           [['general.https_port', 'HTTP and HTTPS need a port each.']], 'the same port twice: refused');
+    check(saved(array_merge($on, ['http_port' => '080', 'https_port' => '80']), ['http_port'], $sites) ===
+          [['general.https_port', 'HTTP and HTTPS need a port each.']], 'the same port written 080 and 80: one port, refused');
     check(saved(array_merge($on, ['http_port' => '', 'https_port' => '']), ['http_port'], []) ===
           [['general.http_port', 'Give a port for HTTP, for HTTPS or both, or turn the Web Application Firewall off.']],
           'on with no port: refused');
