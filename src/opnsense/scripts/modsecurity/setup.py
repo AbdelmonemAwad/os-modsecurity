@@ -89,6 +89,11 @@ GONE_WAIT = 10.0
 
 LOG_DAY = re.compile(r'(audit|error)_([0-9]{8})\.log\Z')
 KEEP_DAYS = 31
+# The day files are kept under a total size too: with /var/log in memory (System: Settings: Miscellaneous)
+# a busy site in Detection only would fill it before OPNsense's days pass. The smaller of 512 MiB and a
+# quarter of the file system they are on; the oldest days go first, never today's.
+LOGS_MAX = 512 << 20
+LOGS_SHARE = 4
 
 MESSAGES = {
     'packages': 'apache24 and ap24-mod_security are not installed',
@@ -728,23 +733,53 @@ def preserve(root):
     return int(value) if re.fullmatch(r'[0-9]{1,4}', value) and int(value) > 0 else KEEP_DAYS
 
 
-def prune(root=None, today=None):
-    """The audit and error logs' day files older than preserve() days taken away: [their names]."""
+def logs_cap():
+    """The most the logs' day files may hold together: LOGS_MAX, or a LOGS_SHARE-th of their file system."""
+    try:
+        found = os.statvfs(common.LOGS)
+        return min(LOGS_MAX, found.f_blocks * found.f_frsize // LOGS_SHARE)
+    except (OSError, AttributeError):
+        return LOGS_MAX
+
+
+def prune(root=None, today=None, cap=None):
+    """The audit and error logs' day files older than preserve() days taken away, and then, while those left
+    hold more than logs_cap() (or cap), the oldest days' - never today's: [their names]."""
     days = preserve(root)
-    oldest = ((today or datetime.date.today()) - datetime.timedelta(days=days)).strftime('%Y%m%d')
-    gone = []
+    day = today or datetime.date.today()
+    oldest = (day - datetime.timedelta(days=days)).strftime('%Y%m%d')
+    gone, kept = [], []
     try:
         names = sorted(os.listdir(common.LOGS))
     except OSError:
         return gone
     for name in names:
         found = LOG_DAY.match(name)
-        if found and found.group(2) < oldest:
+        if not found:
+            continue
+        path = os.path.join(common.LOGS, name)
+        if found.group(2) < oldest:
             try:
-                os.unlink(os.path.join(common.LOGS, name))
+                os.unlink(path)
                 gone.append(name)
             except OSError:
                 pass
+            continue
+        try:
+            kept.append((found.group(2), name, os.path.getsize(path)))
+        except OSError:
+            pass
+    limit = logs_cap() if cap is None else cap
+    total = sum(size for _, _, size in kept)
+    for date, name, size in sorted(kept):
+        if total <= limit or date >= day.strftime('%Y%m%d'):
+            break
+        try:
+            os.unlink(os.path.join(common.LOGS, name))
+            gone.append(name)
+            total -= size
+        except OSError:
+            pass
     return gone
 
 

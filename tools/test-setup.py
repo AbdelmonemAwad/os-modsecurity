@@ -766,6 +766,18 @@ check('the day files older than OPNsense\'s 10 days taken away, the rest kept, n
        ['audit_20261110.log', 'audit_20261111.log', 'audit_20261120.log', 'error_20261110.log', 'error_20261111.log',
         'error_20261120.log', 'modsecurity_20261101.log']])
 check('no setting of its days: 31, as OPNsense\'s', setup.preserve(ET.fromstring('<opnsense/>')), 31)
+for day in ('20261118', '20261119', '20261120'):
+    write(os.path.join(common.LOGS, 'audit_%s.log' % day), 'x' * 400)
+gone = setup.prune(config(), today, cap=900)
+check('the day files over a total size: the oldest day taken away first, until the rest fit',
+      [gone, sorted(n for n in os.listdir(common.LOGS) if n.startswith('audit_2026111') or n == 'audit_20261120.log')],
+      [['audit_20261110.log', 'error_20261110.log', 'audit_20261111.log', 'error_20261111.log', 'audit_20261118.log'],
+       ['audit_20261119.log', 'audit_20261120.log']])
+gone = setup.prune(config(), today, cap=100)
+check('never today\'s, whatever it holds', [gone, os.path.exists(os.path.join(common.LOGS, 'audit_20261120.log')),
+                                            os.path.exists(os.path.join(common.LOGS, 'error_20261120.log'))],
+      [['audit_20261119.log'], True, True])
+check('the cap: 512 MiB at most, a quarter of the file system the logs are on', 0 < setup.logs_cap() <= 512 << 20, True)
 
 # --- listen.php: the interfaces' addresses as the web GUI takes its own ----------------------------------
 

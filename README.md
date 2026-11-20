@@ -77,7 +77,9 @@ installed), one page, off by default:
   each transaction that matched a rule, or was refused or failed, with its rule ids - without the
   request's body or uploaded files, its `Authorization`, `Cookie` and `Set-Cookie` headers masked. Apache's
   own messages beside it (`error_YYYYMMDD.log`). Both kept as long as OPNsense keeps its own logs (System:
-  Settings: Logging, 31 days by default). The page's table of what the rules found is the plan's next part.
+  Settings: Logging, 31 days by default), and under a total size - the smaller of 512 MiB and a quarter of
+  the file system they are on, the oldest days going first, never today's: a day's own growth is not
+  bounded. The page's table of what the rules found is the plan's next part.
 - **Apply** - writes Apache's configuration from the page's settings with the plugin's templates
   (`templates/OPNsense/ModSecurity`), has Apache test it (`httpd -t`), and only then starts or reloads Apache
   with it: a configuration Apache refuses is put back as it was, and Apache goes on with what it had.
