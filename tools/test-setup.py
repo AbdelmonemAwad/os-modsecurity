@@ -368,13 +368,13 @@ check('the shop over HTTPS: its certificate, Blocking, its backend, the Host pas
           'ServerName www.example.com', 'ServerAlias example.com', 'SSLEngine on',
           'SSLCertificateFile "%s"' % certs['6a1b2c3d4e5f6']['crt'], 'SSLCertificateKeyFile "%s"' % certs['6a1b2c3d4e5f6']['key'],
           'SecRuleEngine On', 'ProxyPreserveHost On', 'RequestHeader set X-Forwarded-Proto "https"',
-          'ProxyPass "/" "http://192.0.2.10:8080/"', 'ProxyPassReverse "/" "http://192.0.2.10:8080/"'])
+          'ProxyPass "/" "http://192.0.2.10:8080/" retry=5', 'ProxyPassReverse "/" "http://192.0.2.10:8080/"'])
 check('the intranet over plain HTTP: a wildcard alias with an .invalid ServerName, Detection only, its HTTPS backend '
       'taken unchecked as asked', http_hosts[2], [
           'ServerName site-0d0c3b6e.invalid', 'ServerAlias *.intranet.example.org', 'SecRuleEngine DetectionOnly',
           'ProxyPreserveHost On', 'SSLProxyEngine on', 'SSLProxyVerify none', 'SSLProxyCheckPeerName off',
           'SSLProxyCheckPeerExpire off', 'RequestHeader set X-Forwarded-Proto "http"',
-          'ProxyPass "/" "https://[2001:db8::10]:8443/app/"', 'ProxyPassReverse "/" "https://[2001:db8::10]:8443/app/"'])
+          'ProxyPass "/" "https://[2001:db8::10]:8443/app/" retry=5', 'ProxyPassReverse "/" "https://[2001:db8::10]:8443/app/"'])
 check('no HTTPS virtual host for a site without a certificate', len(https_hosts), 2)
 check('the site under the wildcard and the disabled one: nowhere in the configuration',
       [('198.51.100.5' in httpd), ('192.0.2.20' in httpd)], [False, False])
