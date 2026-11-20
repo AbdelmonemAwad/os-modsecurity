@@ -49,7 +49,12 @@ installed), one page, off by default:
   (ids 19001 and on), by the host name its request names, which Apache chose the site by.
 - **TLS** - a site with a certificate is served over HTTPS with it, and its plain HTTP requests are sent
   there; TLS 1.2 and 1.3 as Mozilla's intermediate profile has them. Without one, plain HTTP. A backend
-  over HTTPS has its certificate checked against the firewall's trust store, unless the site says not to.
+  over HTTPS has its certificate checked, unless the site says not to: signed by an authority of the
+  firewall's trust store, and valid for the site's host names - not for the name or address written in
+  Backend. The host name the browser asked for is passed on (`ProxyPreserveHost`, for backends that serve
+  several sites) and asked of the backend too (SNI), so the backend must present a certificate for the
+  site's public name. A backend whose certificate names only itself needs the check turned off for its
+  site; a switch per site to pass the backend's own name instead is for the plan's next part.
 - **where Apache listens** - Settings' Listen interfaces' addresses, as OPNsense's web GUI takes its own
   (followed when one gets a new address), or every address; an HTTP port (80) and an HTTPS port (443). A
   port the web GUI holds where Apache would listen is refused, never taken, and the page says how to move

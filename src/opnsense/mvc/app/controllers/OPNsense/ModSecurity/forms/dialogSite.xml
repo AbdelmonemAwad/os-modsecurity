@@ -20,13 +20,13 @@
         <id>site.backend</id>
         <label>Backend</label>
         <type>text</type>
-        <help>The site's own server, which its inspected requests are passed to: http:// or https://, an address or a name, a port, and a path where the site is not at the server's root - http://192.0.2.10:8080 or https://intranet.example.com/app. The Host a browser asked for is passed on as it is.</help>
+        <help>The site's own server, which its inspected requests are passed to: http:// or https://, an address or a name, a port, and a path where the site is not at the server's root - http://192.0.2.10:8080 or https://intranet.example.com/app. The host name a browser asked for is passed on as it is: an https:// backend is asked for that name too, and its certificate is checked against it.</help>
     </field>
     <field>
         <id>site.verify</id>
         <label>Check the backend's certificate</label>
         <type>checkbox</type>
-        <help>For an https:// backend: its certificate must be valid for its name and signed by an authority of this firewall's trust store. Off: any certificate is taken - only for a server on a network you trust.</help>
+        <help>For an https:// backend: its certificate must be signed by an authority of this firewall's trust store and be valid for the site's host names, not for the name or address written in Backend - the name the browser asked for is passed on, and asked of the backend (SNI). A backend whose certificate names only itself: turn this off. Off: any certificate is taken - only for a server on a network you trust.</help>
     </field>
     <field>
         <id>site.certificate</id>

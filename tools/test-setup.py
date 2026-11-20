@@ -386,6 +386,13 @@ verified = setup.configuration(dict(facts, usable=[dict(facts['usable'][1], veri
 check('an HTTPS backend checked: required, against the trust store, by its name', [
     'SSLProxyVerify require' in verified, 'SSLProxyCACertificateFile "%s"' % common.TRUST in verified,
     'SSLProxyCheckPeerName on' in verified], [True, True, True])
+checked = block(verified, '<VirtualHost *:80>')[1]
+form = ET.parse(os.path.join(ROOT, 'src/opnsense/mvc/app/controllers/OPNsense/ModSecurity/forms/dialogSite.xml')).getroot()
+helps = {f.findtext('id'): f.findtext('help') for f in form.iter('field')}
+check('the browser\'s host name passed on and the backend\'s certificate checked against it - as the dialog\'s help says',
+      ['ProxyPreserveHost On' in checked, 'SSLProxyCheckPeerName on' in checked,
+       'valid for the site\'s host names, not for the name or address written in Backend' in helps['site.verify'],
+       'its certificate is checked against it' in helps['site.backend']], [True, True, True, True])
 odd_port = setup.configuration(facts, dict(conf, https_port=8443), certs)[1][setup.paths()['conf']]
 check('HTTPS on another port: the redirect names it', 'RewriteRule "^" "https://%{SERVER_NAME}:8443%{REQUEST_URI}" '
       '[R=301,L]' in odd_port, True)
