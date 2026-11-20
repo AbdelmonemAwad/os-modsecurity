@@ -1,0 +1,64 @@
+{
+    "about": "One table for both readings of a site and of the web GUI: scripts/modsecurity/common.py (tools/test-setup.py) and library OPNsense\\ModSecurity\\Site and WebGui (tools/test-model.php). Every address a documentation one.",
+    "names": {
+        "taken": ["www.example.com", "example.com", "*.example.com", "*.shop.example.org", "intranet", "a-b.example.com",
+                  "x1.example.com", "xn--bcher-kva.example", "0a.example.com"],
+        "refused": ["", "*", "*example.com", "www.*.example.com", "-a.example.com", "a-.example.com", "a..example.com",
+                    "192.0.2.10", "2001:db8::10", "www.example.com:443", "www example.com", "www.example.com/x",
+                    "a_b.example.com", "*.", "www.exa\"mple.com", "WWW.EXAMPLE.COM"]
+    },
+    "normalize": [
+        ["WWW.Example.COM., example.com ,www.example.com", ["www.example.com", "example.com"]],
+        [",,", []],
+        ["*.Example.org", ["*.example.org"]]
+    ],
+    "covers": [
+        ["*.example.com", "a.example.com", true],
+        ["*.example.com", "a.b.example.com", true],
+        ["*.example.com", "example.com", false],
+        ["*.example.com", "*.shop.example.com", true],
+        ["*.shop.example.com", "*.example.com", false],
+        ["*.example.com", "*.example.com", false],
+        ["*.example.com", "badexample.com", false],
+        ["*.example.com", "a.example.com.org", false],
+        ["www.example.com", "a.www.example.com", false]
+    ],
+    "backends": {
+        "taken": [
+            ["http://192.0.2.10:8080", "http://192.0.2.10:8080/", false],
+            ["http://192.0.2.10", "http://192.0.2.10/", false],
+            ["https://Intranet.Example.com", "https://intranet.example.com/", true],
+            ["https://[2001:db8::10]:8443/app", "https://[2001:db8::10]:8443/app/", true],
+            ["http://backend:8080/a/b/", "http://backend:8080/a/b/", false],
+            ["  http://198.51.100.5/  ", "http://198.51.100.5/", false],
+            ["http://192.0.2.10:65535/%7Euser", "http://192.0.2.10:65535/%7Euser/", false]
+        ],
+        "refused": ["", "192.0.2.10", "ftp://192.0.2.10", "http://", "http://192.0.2.10:0", "http://192.0.2.10:65536",
+                    "http://user:x@192.0.2.10", "http://192.0.2.10/?a=1", "http://192.0.2.10/#x", "http://192.0.2.10/a b",
+                    "http://2001:db8::10/", "http://[192.0.2.10]/", "http://[2001:db8::zz]/", "http://192.0.2.300/",
+                    "http://-bad.example.com/", "http://192.0.2.10//x", "http://192.0.2.10/a/../b",
+                    "http://192.0.2.10/\"x", "http://192.0.2.10/x\ny", "http://192.0.2.10:80a"]
+    },
+    "webgui": [
+        {"webgui": {"protocol": "https"}, "listeners": {"ports": [80, 443], "interfaces": []},
+         "ports": [80, 443], "interfaces": [], "conflicts": [80, 443]},
+        {"webgui": {"protocol": "https", "port": "", "interfaces": ""}, "listeners": {"ports": [80, 443], "interfaces": []},
+         "ports": [8080, 8443], "interfaces": [], "conflicts": []},
+        {"webgui": {"protocol": "https", "disablehttpredirect": "1"}, "listeners": {"ports": [443], "interfaces": []},
+         "ports": [80, 443], "interfaces": ["wan"], "conflicts": [443]},
+        {"webgui": {"protocol": "https", "port": "4443", "interfaces": "lan"}, "listeners": {"ports": [80, 4443], "interfaces": ["lan"]},
+         "ports": [80, 443], "interfaces": ["wan"], "conflicts": []},
+        {"webgui": {"protocol": "https", "port": "4443", "interfaces": "lan"}, "listeners": {"ports": [80, 4443], "interfaces": ["lan"]},
+         "ports": [80, 443], "interfaces": [], "conflicts": [80]},
+        {"webgui": {"protocol": "https", "interfaces": "lan,opt2"}, "listeners": {"ports": [80, 443], "interfaces": ["lan", "opt2"]},
+         "ports": [80, 443], "interfaces": ["wan", "opt2"], "conflicts": [80, 443]},
+        {"webgui": {"protocol": "http", "port": ""}, "listeners": {"ports": [80], "interfaces": []},
+         "ports": [443], "interfaces": [], "conflicts": []},
+        {"webgui": {"protocol": "http", "port": "8000"}, "listeners": {"ports": [8000], "interfaces": []},
+         "ports": [80, 8000], "interfaces": ["wan"], "conflicts": [8000]},
+        {"webgui": {}, "listeners": {"ports": [80, 443], "interfaces": []},
+         "ports": [443, null], "interfaces": [], "conflicts": [443]},
+        {"webgui": {"protocol": "https", "port": "99999"}, "listeners": {"ports": [80, 443], "interfaces": []},
+         "ports": [], "interfaces": [], "conflicts": []}
+    ]
+}

@@ -1,0 +1,117 @@
+<?xml version="1.0"?>
+<!--
+    SPDX-License-Identifier: BSD-2-Clause
+    Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+
+    A config.xml as OPNsense 26.7 writes it, cut to what the Web Application Firewall reads: the web GUI's
+    listeners, the assigned interfaces (os-xgs-npu's internal link among them), System: Trust's certificates
+    and the plugin's own settings and sites. Every address is a documentation one. The certificates and
+    keys are made by the tests at each run (@CRT@, @PRV@, @CA@ and @NOKEY@ are put in their place), so no
+    key is ever kept here.
+-->
+<opnsense>
+    <system>
+        <webgui>
+            <protocol>https</protocol>
+            <ssl-certref>6a1b2c3d4e5f0</ssl-certref>
+            <port/>
+            <interfaces>lan</interfaces>
+        </webgui>
+    </system>
+    <interfaces>
+        <wan>
+            <if>oxp0</if>
+            <enable>1</enable>
+            <descr>WAN</descr>
+        </wan>
+        <lan>
+            <if>oxp1</if>
+            <enable>1</enable>
+            <descr>LAN</descr>
+        </lan>
+        <opt1>
+            <if>oxips0</if>
+            <enable>1</enable>
+            <descr>INSPECT</descr>
+        </opt1>
+        <opt2>
+            <if>oxp2</if>
+            <descr>SPARE</descr>
+        </opt2>
+    </interfaces>
+    <ca>
+        <refid>6a1b2c3d4e5ca</refid>
+        <descr>Example CA</descr>
+        <crt>@CA@</crt>
+    </ca>
+    <cert>
+        <refid>6a1b2c3d4e5f6</refid>
+        <descr>www.example.com</descr>
+        <caref>6a1b2c3d4e5ca</caref>
+        <crt>@CRT@</crt>
+        <prv>@PRV@</prv>
+    </cert>
+    <cert>
+        <refid>6a1b2c3d4e5f7</refid>
+        <descr>no key</descr>
+        <crt>@CRT@</crt>
+        <prv>@NOKEY@</prv>
+    </cert>
+    <OPNsense>
+        <Syslog>
+            <general>
+                <maxpreserve>10</maxpreserve>
+            </general>
+        </Syslog>
+        <ModSecurity>
+            <general>
+                <enabled>1</enabled>
+                <interfaces>wan</interfaces>
+                <http_port>80</http_port>
+                <https_port>443</https_port>
+            </general>
+            <sites>
+                <site uuid="0d0c3b6e-1a2b-4c3d-8e4f-0a1b2c3d4e01">
+                    <enabled>1</enabled>
+                    <description>Shop</description>
+                    <hostnames>www.example.com,example.com</hostnames>
+                    <backend>http://192.0.2.10:8080</backend>
+                    <certificate>6a1b2c3d4e5f6</certificate>
+                    <mode>blocking</mode>
+                    <paranoia>2</paranoia>
+                    <verify>1</verify>
+                </site>
+                <site uuid="0d0c3b6e-1a2b-4c3d-8e4f-0a1b2c3d4e02">
+                    <enabled>1</enabled>
+                    <description>Intranet</description>
+                    <hostnames>*.intranet.example.org</hostnames>
+                    <backend>https://[2001:db8::10]:8443/app</backend>
+                    <certificate/>
+                    <mode>detection</mode>
+                    <paranoia>1</paranoia>
+                    <verify>0</verify>
+                </site>
+                <site uuid="0d0c3b6e-1a2b-4c3d-8e4f-0a1b2c3d4e03">
+                    <enabled>1</enabled>
+                    <description>Under the wildcard</description>
+                    <hostnames>a.intranet.example.org</hostnames>
+                    <backend>http://198.51.100.5</backend>
+                    <certificate/>
+                    <mode>detection</mode>
+                    <paranoia>1</paranoia>
+                    <verify>1</verify>
+                </site>
+                <site uuid="0d0c3b6e-1a2b-4c3d-8e4f-0a1b2c3d4e04">
+                    <enabled>0</enabled>
+                    <description>Off</description>
+                    <hostnames>www.example.com</hostnames>
+                    <backend>http://192.0.2.20</backend>
+                    <certificate/>
+                    <mode>blocking</mode>
+                    <paranoia>4</paranoia>
+                    <verify>1</verify>
+                </site>
+            </sites>
+        </ModSecurity>
+    </OPNsense>
+</opnsense>
