@@ -326,7 +326,11 @@ check('Apache listens on each address of the interfaces chosen, HTTP and HTTPS',
 check('the modules a site with a certificate and one with an HTTPS backend need, and ModSecurity\'s',
       [line.split()[1] for line in lines if line.startswith('LoadModule ')],
       ['mpm_event_module', 'authz_core_module', 'unixd_module', 'unique_id_module', 'headers_module', 'proxy_module',
-       'proxy_http_module', 'socache_shmcb_module', 'ssl_module', 'rewrite_module', 'security2_module'])
+       'proxy_http_module', 'reqtimeout_module', 'socache_shmcb_module', 'ssl_module', 'rewrite_module',
+       'security2_module'])
+check('a request read within bounds: the handshake, the headers and the body, as Apache\'s own defaults and more',
+      [line for line in lines if line.startswith('RequestReadTimeout')],
+      ['RequestReadTimeout handshake=5 header=20-40,MinRate=500 body=20,MinRate=500'])
 check('ModSecurity\'s module where the package laid it on the second XGS 3300: lib', 'LoadModule security2_module %s'
       % common.SECURITY2[1] in lines, True)
 check('a reverse proxy only, never a forward one', 'ProxyRequests Off' in lines, True)
@@ -510,6 +514,10 @@ check('ModSecurity\'s module in libexec/apache24, beside Apache\'s own: taken', 
 packages(modules=[m for m in ALL_MODULES if m != 'mod_ssl.so'])
 got = apply()
 check('a module Apache has not: refused, the module named', [got['code'], got['detail']], ['module', 'mod_ssl.so'])
+packages(modules=[m for m in ALL_MODULES if m != 'mod_reqtimeout.so'])
+got = apply()
+check('no mod_reqtimeout: refused as any module is, never published without it', [got['code'], got['detail'], rc_calls()],
+      ['module', 'mod_reqtimeout.so', []])
 packages()
 shutil.rmtree(common.CRS)
 got = apply()

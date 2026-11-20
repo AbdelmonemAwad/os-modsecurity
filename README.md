@@ -124,6 +124,9 @@ The page then says it was installed by hand.
 - **inspect what a site sends back** - responses pass unread (`SecResponseBodyAccess Off`, as phase 0
   measured), so the Core Rule Set's rules on responses do not run;
 - **HTTP/2 or WebSocket** - Apache speaks HTTP/1.1, to clients and to backends;
+- **limit a flood of connections** - each request is read within bounds (`mod_reqtimeout`: the headers in 20
+  to 40 seconds, the body at 500 bytes a second), so a slow client frees its worker; how many connections
+  one address may open is pf's to limit, by a rule's maximum connections from one source;
 - **touch the coprocessor** - nothing of os-xgs-npu is asked or changed.
 
 ## Not yet, and why

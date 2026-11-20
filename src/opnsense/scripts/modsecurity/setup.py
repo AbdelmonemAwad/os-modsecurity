@@ -53,9 +53,12 @@ PHP = '/usr/local/bin/php'
 
 # Apache's modules this configuration loads, each from its file in libexec/apache24 - by need: TLS only
 # where a site has a certificate or an HTTPS backend, the redirect to HTTPS only where a site has one.
+# mod_reqtimeout always, as Apache's own httpd.conf loads it: a request's headers and body read within
+# bounds, or a client sending a header line a minute keeps a worker as long as it likes.
 ALWAYS = (('authz_core_module', 'mod_authz_core.so'), ('unixd_module', 'mod_unixd.so'),
           ('unique_id_module', 'mod_unique_id.so'), ('headers_module', 'mod_headers.so'),
-          ('proxy_module', 'mod_proxy.so'), ('proxy_http_module', 'mod_proxy_http.so'))
+          ('proxy_module', 'mod_proxy.so'), ('proxy_http_module', 'mod_proxy_http.so'),
+          ('reqtimeout_module', 'mod_reqtimeout.so'))
 TLS = (('socache_shmcb_module', 'mod_socache_shmcb.so'), ('ssl_module', 'mod_ssl.so'))
 REDIRECT = (('rewrite_module', 'mod_rewrite.so'),)
 # The MPM: event where there is one, as phase 0's lab found it, else worker, else prefork.
