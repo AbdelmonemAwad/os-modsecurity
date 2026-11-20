@@ -39,7 +39,8 @@ CRS = ETC + '/crs'
 STATE = '/var/db/os-modsecurity'
 # ModSecurity's temporary and data files, written by Apache's children, which run as www.
 WORK = '/var/tmp/os-modsecurity'
-# The audit log's day files (JSON, settled point 7a); syslog-ng keeps Apache's error log there too.
+# The audit log's day files (JSON, settled point 7a), and Apache's error log's beside them: each written by
+# Apache through rotatelogs (httpd.conf, modsecurity.conf), a file a day.
 LOGS = '/var/log/modsecurity'
 # Apache's runtime files - its TLS session cache, its locks - and its pid file.
 RUN = '/var/run/modsecurity'

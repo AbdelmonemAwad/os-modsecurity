@@ -7,7 +7,7 @@
  "A new site is in Detection only: what the rules find is logged and the request passes. Blocking refuses an attack with 403. Changes here are put into use with Apply.",
  "A port, from 1 to 65535, or empty for none.",
  "A signed release, its signature checked with %s.",
- "A site behind this firewall runs on its host processor, never in hardware: measured on an XGS 3300, 148 requests a second one at a time through Apache and the Core Rule Set at paranoia level 1, plain HTTP - about 75 a second for each host core, derived from its processor time. On an XGS 136: not measured yet.",
+ "A site behind this firewall runs on its host processor, never in hardware: measured on an XGS 3300 (vendor version 22), 148 requests a second one at a time through Apache and the Core Rule Set at paranoia level 1, plain HTTP - about 75 a second for each host core, derived from its processor time. On an XGS 136: not measured yet.",
  "A site has %d host names at most.",
  "A site reached from another network needs a rule on that interface passing its port to This Firewall (Firewall: Rules): none is made here.",
  "A site's certificate is not in System: Trust with its private key:",

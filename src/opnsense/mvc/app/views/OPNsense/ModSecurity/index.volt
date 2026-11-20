@@ -241,7 +241,7 @@
 
             if (data.xgs) {
                 $cards.append(card('', 'fa-microchip', "{{ lang._('Hardware') }}", "{{ lang._('host processor') }}",
-                    "{{ lang._('A site behind this firewall runs on its host processor, never in hardware: measured on an XGS 3300, 148 requests a second one at a time through Apache and the Core Rule Set at paranoia level 1, plain HTTP - about 75 a second for each host core, derived from its processor time. On an XGS 136: not measured yet.') }}"));
+                    "{{ lang._('A site behind this firewall runs on its host processor, never in hardware: measured on an XGS 3300 (vendor version 22), 148 requests a second one at a time through Apache and the Core Rule Set at paranoia level 1, plain HTTP - about 75 a second for each host core, derived from its processor time. On an XGS 136: not measured yet.') }}"));
             }
 
             $('#ms-firewall').toggle(!!data.enabled);

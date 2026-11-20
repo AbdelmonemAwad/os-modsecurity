@@ -75,7 +75,10 @@ installed), one page, off by default:
   never changes the GUI's settings.
 - **the audit log** - JSON, one record a line, a file a day in `/var/log/modsecurity/audit_YYYYMMDD.log`:
   each transaction that matched a rule, or was refused or failed, with its rule ids - without the
-  request's body or uploaded files, its `Authorization`, `Cookie` and `Set-Cookie` headers masked. Apache's
+  request's body or uploaded files, its `Authorization`, `Proxy-Authorization`, `Cookie` and `Set-Cookie`
+  headers masked where the record holds the request's and the response's headers (its parts B and F); a
+  rule that matches one of their values writes the text it matched into its own message (part H), which
+  nothing masks - whether ModSecurity 2.9.15 does there is not measured yet. Apache's
   own messages beside it (`error_YYYYMMDD.log`). Both kept as long as OPNsense keeps its own logs (System:
   Settings: Logging, 31 days by default), and under a total size - the smaller of 512 MiB and a quarter of
   the file system they are on, the oldest days going first, never today's: a day's own growth is not
@@ -91,13 +94,19 @@ installed), one page, off by default:
   certificate without its key, no port for its kind - is left out, named on the page with its reason.
 - **System: Services** lists it while it is on; it starts at boot while it is on.
 
+A backend receives each request with the host name the browser asked for, `X-Forwarded-Proto` (`http` or
+`https`) and, from Apache's mod_proxy, `X-Forwarded-For`, `X-Forwarded-Host` and `X-Forwarded-Server`. The
+client's address is the last entry of `X-Forwarded-For`: Apache appends it to any the client sent itself,
+so a backend that trusts the first entry can be told any address.
+
 Nothing here adds a firewall rule: a site reached from another network needs a rule on that interface
 passing its port to This Firewall, which the page reminds of. A site published by a port forward instead
 never meets the rules.
 
 **On an XGS appliance** a fifth card says what phase 0 measured: a site behind the firewall runs on the host
 processor, never in hardware - a reverse proxy ends every connection on the firewall, which neither of
-os-xgs-npu's flow makers offloads (a way out by `lo0`); on the second XGS 3300, 2,000 requests one at a time
+os-xgs-npu's flow makers offloads (a way out by `lo0`); on the second XGS 3300 (its coprocessor on vendor
+version 22), 2,000 requests one at a time
 through Apache and the Core Rule Set at paranoia level 1 (plain HTTP, Detection only): 148 a second, no flow
 in hardware, and about 75 a second for each host core, derived from the processor time a request took - not
 a load test. On the XGS 136: not measured yet.
@@ -221,7 +230,8 @@ paranoia rules that do not stop at the first match, a release taken unsigned, an
 SHA-256, a link in an archive, the pinned key not asked, a site checked though unchanged, a line written as
 HTML, Apply by GET, the rc script believing any pid, the removal leaving the Core Rule Set - each was caught.
 
-Measured in phase 0, on the second XGS 3300 (its lab, 2026-11-20, Apache and the Core Rule Set v4.25.2 as
+Measured in phase 0, on the second XGS 3300 (its coprocessor on vendor version 22; its lab, 2026-11-20,
+Apache and the Core Rule Set v4.25.2 as
 that lab configured them, not this plugin): in Detection only an SQL injection, a script tag and a path with
 `../` passed and were logged with rule ids of 942, 941 and 930; in Blocking the three were refused with 403
 and a plain request answered 200; the audit log in JSON with the ids; the rates above; and `pkg delete` of
