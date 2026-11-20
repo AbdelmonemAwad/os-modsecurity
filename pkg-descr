@@ -1,0 +1,21 @@
+Web Application Firewall publishes sites through the firewall: each
+request to a site is received on the firewall by an Apache of the
+plugin's own, inspected by ModSecurity 2.9 with the OWASP Core Rule Set
+(the 4.25 line), and passed to the site's backend over HTTP or HTTPS.
+Each site has its host names, its certificate of System: Trust or none,
+its paranoia level from 1 to 4, and its mode: Detection only, where
+what the rules find is logged and the request passes - every new site's
+first mode - or Blocking, where an attack is refused with 403. The
+audit log is kept in JSON, a file a day. The Core Rule Set is installed
+from a release this project republished signed, once the Core Rule
+Set's own signature was checked. Apache and ModSecurity are OPNsense's
+own packages, apache24 and ap24-mod_security. Off by default; a port
+the web GUI listens on is refused, never taken. It adds no firewall
+rule.
+
+Plugin Changelog
+================
+
+1.0.0
+
+* Initial release
