@@ -31,7 +31,8 @@ not the API, so not its hourly allowance). Following the newest 4.x instead is t
 
 BY HAND. An archive the owner fetched and checked himself - with the Core Rule Set's own `gpg --verify`
 against the fingerprint above, on another machine - is taken with the SHA-256 he gives, from a shell
-only: configd has no action for it. The page says it was installed by hand.
+only: configd has no action for it. Of the line followed only: Settings' Install would take that line
+back. The page says it was installed by hand.
 
 WHAT AN INSTALL IS. The archive unpacked - its one top directory coreruleset-<version>/, files and
 directories only - into /usr/local/etc/os-modsecurity/crs/<version>; its crs-setup.conf.example copied to
@@ -160,7 +161,9 @@ def fetch(url, limit):
 
 def tags():
     """The crs-<version> tags there are: from GitHub's git endpoint, the list of references `git
-    ls-remote` reads; from a place named by file://, its download/ directory's names."""
+    ls-remote` reads; from a place named by file://, its download/ directory's names. A list holding no
+    branch (refs/heads/) is no list - a proxy's page, a format changed - and raises ValueError, said as
+    a list not read, never as a repository with no release."""
     place = crs_from()
     if place.startswith('file://'):
         try:
@@ -170,7 +173,7 @@ def tags():
     request = urllib.request.Request(REFS, headers={'User-Agent': 'git/2 ' + AGENT['User-Agent']})
     with urllib.request.urlopen(request, timeout=30) as response:
         data = response.read(8 << 20)
-    found, at = set(), 0
+    found, branches, at = set(), 0, 0
     while at + 4 <= len(data):
         try:
             size = int(data[at:at + 4], 16)
@@ -181,8 +184,12 @@ def tags():
             continue
         line = data[at + 4:at + size].split(b'\0')[0].strip().decode('ascii', 'replace')
         at += size
+        if len(line) > 41 and line[40] == ' ' and line[41:].startswith('refs/heads/'):
+            branches += 1
         if len(line) > 41 and line[40] == ' ' and line[41:].startswith('refs/tags/crs-'):
             found.add(line[41 + len('refs/tags/'):].split('^')[0])
+    if not branches:
+        raise ValueError('no reference could be read from the list of %s' % REPO)
     return sorted(found)
 
 
@@ -444,8 +451,27 @@ def stage(archive, version=None):
         shutil.rmtree(scratch, ignore_errors=True)
 
 
-def then_apply(result, run=subprocess.run):
-    """With the plugin on, Apply takes the new Core Rule Set: its answer joins this one."""
+def switch_back(before):
+    """crs/current pointed again at the version before and its record written back: that version, or ''
+    where there is none to go back to."""
+    version = before.get('version', '')
+    if not version or not os.path.isdir(os.path.join(common.CRS, version, 'rules')):
+        return ''
+    link = os.path.join(common.CRS, '.current.new')
+    if os.path.lexists(link):
+        os.unlink(link)
+    os.symlink(version, link)
+    os.replace(link, os.path.join(common.CRS, 'current'))
+    common.write_json(state_path(), before, 0o644)
+    return version
+
+
+def then_apply(result, run=subprocess.run, before=None):
+    """With the plugin on, Apply takes the new Core Rule Set: its answer joins this one. Where Apache's test
+    refuses the whole configuration with it (Apply's 'config': the files put back, Apache running what it
+    ran), crs/current goes back to the version before, so no later Apply - a new address, a boot - and no
+    start from System: Services takes rules the whole configuration has not passed with; the answer says
+    Apache refused them. With no version before, the new one stays, and Apply's refusal is said."""
     import setup
     try:
         on = common.general(common.read_root()).get('enabled')
@@ -453,6 +479,12 @@ def then_apply(result, run=subprocess.run):
         on = False
     if on:
         result['apply'] = setup.applied(None, run, time.sleep, None)
+        if result['apply'].get('code') == 'config':
+            back = switch_back(before or {})
+            if back:
+                said = result['apply'].get('detail', '')
+                result.update(refused('refused', 'Apache refused the configuration with the Core Rule Set %s (%s); %s '
+                                      'is in use again' % (result.get('version'), said, back), said, previous=back))
     return result
 
 
@@ -515,7 +547,7 @@ def install(run=subprocess.run):
                                tag=tag)
         return then_apply({'status': 'installed', 'version': version, 'tag': tag, 'signed_with': manifest['key'],
                            'message': 'the Core Rule Set %s installed, signed with %s' % (version, manifest['key'])},
-                          run)
+                          run, have)
     return locked(work)
 
 
@@ -533,8 +565,13 @@ def install_archive(path, sha256, run=subprocess.run):
         if got != want:
             return refused('mismatch', 'the archive is not the one given: SHA-256 %s, not %s' % (got[:16], want[:16]),
                            'SHA-256 %s / %s' % (got[:16], want[:16]))
+        have = installed()
         try:
             version, rules = stage(path)
+            if not version.startswith(LINE + '.'):
+                shutil.rmtree(os.path.join(common.CRS, version + '.new'), ignore_errors=True)
+                return refused('line', 'the archive is the Core Rule Set %s, not of the %s line this plugin follows: '
+                               'Install would take that line back' % (version, LINE), version, line=LINE)
             record = {'source': 'hand', 'tag': '', 'sha256': got, 'size': os.path.getsize(path), 'signed_with': '',
                       'date': '', 'upstream_key': ''}
             activate(version, rules, record, run)
@@ -545,7 +582,7 @@ def install_archive(path, sha256, run=subprocess.run):
         except OSError as error:
             return refused('write', 'the archive could not be installed: %s' % error, str(error))
         return then_apply({'status': 'installed', 'version': version, 'tag': '', 'signed_with': '',
-                           'message': 'the Core Rule Set %s installed by hand' % version}, run)
+                           'message': 'the Core Rule Set %s installed by hand' % version}, run, have)
     return locked(work)
 
 

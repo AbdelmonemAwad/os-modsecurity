@@ -202,6 +202,15 @@ os.rename(os.path.join(common.SHARE, 'crs-from'), os.path.join(common.SHARE, 'cr
 crs.REFS = 'file://' + refs
 check('the tags GitHub lists: the crs- ones, each once, an annotated tag\'s commit line not twice', crs.tags(),
       ['crs-4.25.10', 'crs-4.25.2'])
+with open(refs, 'wb') as handle:
+    handle.write(b'<html><body>Access to this site is blocked by policy</body></html>\n')
+got = crs.install()
+check('a list that holds no branch - a proxy\'s page: said as the list not read, not as no release',
+      [got['status'], got['code'], 'no reference could be read' in got['detail']], ['failed', 'unlisted', True])
+with open(refs, 'wb') as handle:
+    handle.write(pkt('# service=git-upload-pack') + b'0000' + pkt('a' * 40 + ' HEAD\0multi_ack') +
+                 pkt('b' * 40 + ' refs/heads/main') + b'0000')
+check('a list with its branch and no crs- tag: no release, as before', [crs.tags(), crs.install()['code']], [[], 'none'])
 os.rename(os.path.join(common.SHARE, 'crs-from.off'), os.path.join(common.SHARE, 'crs-from'))
 
 # --- the manifest ------------------------------------------------------------------------------------------
@@ -356,6 +365,14 @@ check('by hand, its SHA-256: installed, said by hand', [got['status'], current()
                                                         crs.installed()['signed_with']], ['installed', '4.25.8', 'hand', ''])
 check('the version Apache\'s configuration on disk names kept beside the one before, though older',
       versions(), ['4.25.3', '4.25.4', '4.25.8'])
+other = os.path.join(TOP, 'coreruleset-4.30.0-minimal.tar.gz')
+with open(other, 'wb') as handle:
+    handle.write(archive('4.30.0'))
+got = crs.install_archive(other, crs.sha256_of(other))
+check('by hand, an archive of another line than 4.25: refused - Install would take the line back - nothing changed',
+      [got['status'], got['code'], got['detail'], current(), versions(),
+       [n for n in os.listdir(common.CRS) if n.endswith('.new')]],
+      ['failed', 'line', '4.30.0', '4.25.8', ['4.25.3', '4.25.4', '4.25.8'], []])
 
 # --- Apply after an install, and one at a time -------------------------------------------------------------
 
@@ -377,6 +394,27 @@ got = crs.install()
 check('an Apply or an install running: this one says so and changes nothing', [got['status'], got['code'], current()],
       ['failed', 'busy', '4.25.9'])
 holder.close()
+
+# Apache's test refusing the whole configuration with a new release: the one before is current again
+setup._apply = lambda *args: applied.append(args) or {'status': 'failed', 'code': 'config',
+                                                      'detail': 'AH00526: Syntax error on line 9 of httpd.conf'}
+record_9 = crs.installed()
+publish('4.25.10')
+got = crs.install()
+check('Apply refusing the configuration with the new release: the one before current again, its record too, said',
+      [got['status'], got['code'], got['detail'], got['previous'], current(), crs.installed()['version'],
+       got['apply']['code']],
+      ['failed', 'refused', 'AH00526: Syntax error on line 9 of httpd.conf', '4.25.9', '4.25.9', '4.25.9', 'config'])
+setup._apply = lambda *args: applied.append(args) or {'status': 'failed', 'code': 'start', 'detail': 'AH00072'}
+got = crs.install()
+check('Apply not running it for another reason - a port held: the new release stays, Apply\'s answer said',
+      [got['status'], current(), got['apply']['code']], ['installed', '4.25.10', 'start'])
+shutil.rmtree(os.path.join(PLACE, 'download', 'crs-4.25.10'))
+switched = crs.switch_back(record_9)
+check('back to a version that is still there: current and the record', [switched, current(), crs.installed() == record_9],
+      ['4.25.9', '4.25.9', True])
+check('nothing to go back to: nothing changed', [crs.switch_back({}), current()], ['', '4.25.9'])
+setup._apply = lambda *args: applied.append(args) or {'status': 'ok', 'state': 'running', 'sites': 1}
 
 # --- check -------------------------------------------------------------------------------------------------
 

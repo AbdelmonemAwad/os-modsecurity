@@ -129,10 +129,13 @@ fewer new false positives: only when `crs.json`'s Ed25519 signature verifies wit
 and the archive is the one signed. The archive is unpacked into `/usr/local/etc/os-modsecurity/crs/<version>`
 (its one top directory, files and directories only), its `crs-setup.conf.example` copied to `crs-setup.conf`
 as the Core Rule Set's install says, tested by Apache, and only then used; the version before is kept until
-the next install.
+the next install, and is made current again where Apply then finds Apache refusing the whole configuration
+with the new one. Apache's configuration names the version's own directory, so a configuration put back
+keeps the rules it ran with. A list of releases that cannot be read - a proxy's page in place of GitHub's -
+is said as such, never as a line with no release.
 
-By hand, an archive checked elsewhere with the Core Rule Set's own `gpg --verify` is taken with the SHA-256
-given, from a shell only: `/usr/local/opnsense/scripts/modsecurity/crs.py install-archive <archive> <sha256>`.
+By hand, an archive of the 4.25 line checked elsewhere with the Core Rule Set's own `gpg --verify` is taken
+with the SHA-256 given, from a shell only (another line is refused: Install would take the 4.25 line back): `/usr/local/opnsense/scripts/modsecurity/crs.py install-archive <archive> <sha256>`.
 The page then says it was installed by hand.
 
 ## What it does not do
