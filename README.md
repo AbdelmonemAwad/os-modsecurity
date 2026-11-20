@@ -106,10 +106,9 @@ never meets the rules.
 **On an XGS appliance** a fifth card says what phase 0 measured: a site behind the firewall runs on the host
 processor, never in hardware - a reverse proxy ends every connection on the firewall, which neither of
 os-xgs-npu's flow makers offloads (a way out by `lo0`); on the second XGS 3300 (its coprocessor on vendor
-version 22), 2,000 requests one at a time
-through Apache and the Core Rule Set at paranoia level 1 (plain HTTP, Detection only): 148 a second, no flow
-in hardware, and about 75 a second for each host core, derived from the processor time a request took - not
-a load test. On the XGS 136: not measured yet.
+version 22), 2,000 requests one at a time through Apache and the Core Rule Set at paranoia level 1 (plain
+HTTP, Detection only): 148 a second, no flow in hardware, and about 75 a second for each host core, derived
+from the processor time a request took - not a load test. On the XGS 136: not measured yet.
 
 ## Engine, and why it is not the plan's
 
@@ -146,7 +145,8 @@ keeps the rules it ran with. A list of releases that cannot be read - a proxy's 
 is said as such, never as a line with no release.
 
 By hand, an archive of the 4.25 line checked elsewhere with the Core Rule Set's own `gpg --verify` is taken
-with the SHA-256 given, from a shell only (another line is refused: Install would take the 4.25 line back): `/usr/local/opnsense/scripts/modsecurity/crs.py install-archive <archive> <sha256>`.
+with the SHA-256 given, from a shell only - another line is refused, since Install would take the 4.25 line
+back: `/usr/local/opnsense/scripts/modsecurity/crs.py install-archive <archive> <sha256>`.
 The page then says it was installed by hand.
 
 ## What it does not do
@@ -176,7 +176,12 @@ The page then says it was installed by hand.
   Detection only, ordinary requests passing, each finding in the log with its rule id; on the second XGS
   3300, the XGS 136 and a plain OPNsense. Not measured yet: Apache with the plugin's configuration, TLS
   (phase 0's figures are plain HTTP), a paranoia level above 1, the cost of each level, the request body's
-  limit in Blocking, false positives on real sites.
+  limit in either mode, false positives on real sites; a graceful restart Apache does not survive and the
+  configuration before started again, and how long a start and a reload take against the 30 seconds Apply
+  waits for each; `mod_reqtimeout` in OPNsense's apache24 package and a slow client given 408; an HTTPS
+  backend's certificate checked against the site's name; the grid's refusal shown in OPNsense's dialog; a
+  renewed certificate taken by the daily check; what an audit record's rule messages (part H) hold of a
+  masked header.
 - **the page in a browser** - not opened yet, in either theme or language.
 
 ## What is tested
@@ -184,7 +189,7 @@ The page then says it was installed by hand.
 On 2026-11-20, from this branch, away from an appliance - the checks, run under Python 3.14, PHP 8.5 and
 node 24:
 
-- **the Apply** - `tools/test-setup.py`, 201 checks: host names, wildcards and backends read as the model
+- **the Apply** - `tools/test-setup.py`, 238 checks: host names, wildcards and backends read as the model
   reads them - one table with `tools/test-model.php` (`tools/fixtures/cases.json`) - and the web GUI's
   listeners and where they meet the plugin's ports; a config.xml as OPNsense 26.7 writes it
   (`tools/fixtures/config.xml`, every address a documentation one), its certificates and keys made by
@@ -193,24 +198,38 @@ node 24:
   Apache took the configuration; Apache's configuration rendered from the templates - its listeners, the
   catch-alls, each site's mode, its paranoia rule matched as Apache matches its names, the redirect to
   HTTPS, an HTTPS backend checked or not, a wildcard-only site's ServerName, the JSON audit log, and nothing
-  of an unchecked config.xml in it; Apply's every way - off, each refusal (the packages, a module, the Core
-  Rule Set, the web GUI's ports, no address, no site), Apache's test failing and the files put back, the
-  start, the reload, Apache gone after either - and one at a time; the logs' days; listen.php's addresses
-  through a stand-in of `interfaces_addresses()`; the page's status in each state;
-- **the Core Rule Set** - `tools/test-crs.py`, 50 checks: releases made here and signed with throwaway keys -
+  of an unchecked config.xml in it, `mod_reqtimeout`'s bounds, `retry=5`, the MPM's notices in the log, the
+  Core Rule Set by its version's directory; the dialog's help said as the configuration does it - the
+  backend's name check, the request body's limits; Apply's every way - off, each refusal (the packages, a
+  module, `mod_reqtimeout` among them, the Core Rule Set, one port for both kinds, the web GUI's ports, no
+  address, no site), Apache's test failing and the files put back, the start, the reload waited for until
+  Apache's log says it is done, Apache gone after a reload - the files and certificates before put back and
+  started again, or stopped where they do not start - and a start that fails, the files put back and
+  nothing else started - and one at a time; a renewed certificate taken by the daily check and put back
+  where Apache does not survive it; the logs' days and their total size; listen.php's addresses through a
+  stand-in of `interfaces_addresses()`; the page's status in each state, the web GUI's interfaces by their
+  descriptions;
+- **the Core Rule Set** - `tools/test-crs.py`, 70 checks: releases made here and signed with throwaway keys -
   the newest of the line, a manifest refused for each field it must have, a key the firewall does not hold
-  or none; the archive refused when it is not the one signed, holds a link, a device, a path outside its
-  top directory, another version or too few rules - nothing in use changed; Apache refusing a release; the
-  one before kept, an older one taken away; an archive by hand; Apply after an install; one at a time;
-- **the model** - `tools/test-model.php`, 131 checks: Settings and each site checked as a Save checks them,
-  each refusal on its field and only where its part changed; the model's XML in step with `common.py`;
-- **the page's API and the hook** - `tools/test-mvc.php`, 33 checks: the status - an answer that is no
-  object, an empty list among them, taken as none - Apply and Install POST only, the grid's rows, the
-  service while on, the start at boot, a new address followed only on a Listen interface chosen, every
-  configd action asked for there;
-- **the page's script** - `tools/test-page.js`, 44 checks, under node with a stand-in jQuery: the cards in
-  each state, the fifth on an XGS appliance, the lines under them, each refusal in the page's words, markup
-  in a value written as text, Apply from Settings and from Sites, Install, the grid's columns;
+  or none, each refusal by its code; a list of releases that holds no branch said as not read; the archive
+  refused when it is not the one signed, holds a link, a device, a path outside its top directory, another
+  version or too few rules - nothing in use changed; Apache refusing a release; the one before kept, and
+  every version a configuration on disk names, an older one taken away; an archive by hand, of the 4.25
+  line only; Apply after an install, and the version before made current again when Apply refuses the new
+  one; one at a time;
+- **the model** - `tools/test-model.php`, 133 checks: Settings and each site checked as a Save checks them,
+  each refusal on its field and only where its part changed, a port written 080 and 80 one port, the web
+  GUI's interfaces by their descriptions; the model's XML in step with `common.py`;
+- **the page's API and the hook** - `tools/test-mvc.php`, 42 checks: the status - an answer that is no
+  object, an empty list among them, taken as none - Apply and Install POST only, the grid's rows, the grid's
+  switch through the real model and a copy of OPNsense 26.7's `toggleBase()` - a site turned on refused with
+  the model's words where a Save would refuse it, one turned off always saved - the service while on, the
+  start at boot, a new address followed only on a Listen interface chosen, every configd action asked for
+  there, Apply and the install described for Cron;
+- **the page's script** - `tools/test-page.js`, 49 checks, under node with a stand-in jQuery: the cards in
+  each state, the fifth on an XGS appliance, the ports Apache listens on, the lines under them, each refusal
+  of Apply and of Install in the page's words, markup or an entity in a value written as text and made
+  plain once, Apply from Settings and from Sites, Install, the grid's columns;
 - **the installation** - `tools/test-install.py`, 41 checks, in a temporary root: nothing copied without
   Apache and ModSecurity or with a syntax error, every file laid down with its mode and taken away, the menu
   at XGS 67 or under Services, the directories and who reads them, the rc script - start, reload as a
@@ -218,8 +237,8 @@ node 24:
   first at a removal, nothing of the plugin left, OPNsense's packages kept, nothing done by the old package
   in an upgrade;
 - **the self-update** - `tools/test-self-update.py`, 45 checks, as os-blocklists has it;
-- **the strings** - `tools/check-strings.py`: each of the 121 strings the GUI shows is in `source.json`; 24
-  have their Arabic in opnsense-arabic already, the other 97 wait for it there;
+- **the strings** - `tools/check-strings.py`: each of the 137 strings the GUI shows is in `source.json`; 24
+  have their Arabic in opnsense-arabic already, the other 113 wait for it there;
 - **the rest** - every installed file removed by the uninstaller (`tools/check-uninstall.sh`), `php -l`,
   `py_compile` and pyflakes, `sh -n`, XML and JSON, nothing private, no Arabic in the code, the copyright
   line; and, by hand, the page kit (kit).
@@ -229,14 +248,17 @@ that takes nothing, a refused configuration not put back, certificates taken awa
 paranoia rules that do not stop at the first match, a release taken unsigned, an archive taken whatever its
 SHA-256, a link in an archive, the pinned key not asked, a site checked though unchanged, a line written as
 HTML, Apply by GET, the rc script believing any pid, the removal leaving the Core Rule Set - each was caught.
+So was each of the 31 changes of the first part's fix round, undone one at a time: the files before not put
+back after a reload or a start Apache did not survive, the reload taken as done at once, `mod_reqtimeout`
+left out, the grid's switch saved unchecked, a renewed certificate not taken, Install's and Apply's codes
+dropped, a refused Apply keeping the new rules, and the rest.
 
 Measured in phase 0, on the second XGS 3300 (its coprocessor on vendor version 22; its lab, 2026-11-20,
-Apache and the Core Rule Set v4.25.2 as
-that lab configured them, not this plugin): in Detection only an SQL injection, a script tag and a path with
-`../` passed and were logged with rule ids of 942, 941 and 930; in Blocking the three were refused with 403
-and a plain request answered 200; the audit log in JSON with the ids; the rates above; and `pkg delete` of
-the two packages leaving nothing behind (`pkg autoremove` then takes apr, gdbm and yajl, which they
-brought).
+Apache and the Core Rule Set v4.25.2 as that lab configured them, not this plugin): in Detection only an
+SQL injection, a script tag and a path with `../` passed and were logged with rule ids of 942, 941 and
+930; in Blocking the three were refused with 403 and a plain request answered 200; the audit log in JSON
+with the ids; the rates above; and `pkg delete` of the two packages leaving nothing behind (`pkg
+autoremove` then takes apr, gdbm and yajl, which they brought).
 
 Not tested: anything on an appliance (above) - Apache itself has not read this configuration yet.
 
