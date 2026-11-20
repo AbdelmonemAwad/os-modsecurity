@@ -120,7 +120,8 @@ repository has neither libmodsecurity 3 nor its nginx connector, its nginx is bu
 another, and a separate nginx would be the same package with the same module missing. What OPNsense's
 repository does build is **Apache 2.4.70 with ModSecurity 2.9.15** - `apache24` and `ap24-mod_security`,
 the pairing the Core Rule Set documents for Apache - so this plugin depends on those two packages
-(`PLUGIN_DEPENDS`), as os-frontpanel depends on lcdproc, and runs Apache as its own instance: its
+(`PLUGIN_DEPENDS`), as os-frontpanel depends on lcdproc - `install/install.sh` installs them from
+OPNsense's repository when they are not there, since 1.0.1 - and runs Apache as its own instance: its
 configuration in `/usr/local/etc/os-modsecurity`, its pid file `/var/run/modsecurity.pid`, never the
 package's own configuration. Not taken: building libmodsecurity 3 and the connector here for each nginx
 update OPNsense publishes (binaries to build, sign and keep up), and Coraza, which OPNsense has no package
@@ -295,6 +296,15 @@ The lab's first runs found faults of the lab's own scripts alone (configd's name
 check reading a line the next call had written over, a field off by one, the GUI's redirect left on port 80
 when the GUI moved, a console command too long); fixed there and run again. The plugin showed none.
 
+Found after the release, the same evening: 1.0.0 did not install on an appliance without Apache. os-xgs-npu's
+update installs every plugin an appliance never had, and on the second XGS 3300 and the XGS 136 this one's
+install.sh stopped and asked for `pkg install apache24 ap24-mod_security` to be run by hand - the lab above
+had installed both packages before the plugin, so an owner's way was never run. Since 1.0.1 install.sh
+installs them itself. Run on both appliances from a box without Apache, as the update runs it: with no
+repository it could reach, it said so and left nothing installed; then the five packages and the plugin,
+in 3 and 4 s; again over it, no package installed twice; the removal took away the two packages it had
+installed, and the plugin.
+
 Not tested: TLS - a site's certificate, an HTTPS backend's checked against its name, a renewed certificate taken
 by the daily check (a test certificate waits); a paranoia level above 1 and its cost; false positives on real
 sites; the page in a browser.
@@ -303,17 +313,21 @@ sites; the page in a browser.
 
 ## Installation
 
-It is not in the OPNsense plugin repository, so there is no `pkg install os-modsecurity`, and there is no
-release yet.
+It is not in the OPNsense plugin repository, so there is no `pkg install os-modsecurity`.
 
-**From a checkout** of this repository, on the firewall, as root, after OPNsense's own packages:
+**From XGS: Updates' Plugins tab**, with os-xgs-npu 0.2.0-alpha.1 or later: Install takes the latest
+release, checked against its signature, and runs its `install/install.sh` - 1.0.1 or later where Apache is
+not installed yet, as 1.0.0 stopped there. os-xgs-npu's own update installs it the same way.
+
+**From a checkout** of this repository, on the firewall, as root:
 
 ```sh
-pkg install apache24 ap24-mod_security
 sh install/install.sh
 ```
 
-It stops when either package is missing, checks the PHP with `php -l` and the Python with `py_compile`
+It installs OPNsense's packages `apache24` and `ap24-mod_security` when they are not there, and stops,
+with nothing of the plugin copied, when the firewall cannot install them from OPNsense's repository. It
+checks the PHP with `php -l` and the Python with `py_compile`
 before anything is copied, copies `src/` onto `/usr/local`, puts the page in the menu (`place-menu.sh`: XGS
 with os-xgs-npu, Services without), and stops Apache, or applies again where the plugin is on: no site is
 published until it is turned on in Settings and the Core Rule Set is installed. Safe to run again: the
@@ -321,10 +335,11 @@ settings in config.xml and the Core Rule Set installed are kept.
 
 `sh install/uninstall.sh` stops Apache and removes the plugin's files, its menu entry and everything it
 wrote: Apache's configuration and the certificates exported for it, the Core Rule Set, its logs and what it
-last did. The settings stay in config.xml, and `apache24` and `ap24-mod_security` stay installed:
-`pkg delete ap24-mod_security apache24` takes them away.
+last did. The settings stay in config.xml. `apache24` and `ap24-mod_security` go too when
+`install/install.sh` installed them and no other package needs them, and stay otherwise; the packages they
+brought with them stay (`pkg autoremove` takes away those nothing needs).
 
-**From a package**, once there is a release: `tools/make-package.sh` builds it on a firewall, and
+**From a package**: `tools/make-package.sh` builds it on a firewall, and
 `release.yml` in a FreeBSD virtual machine for each release, as os-blocklists does; pkg then installs the
 two packages with it.
 

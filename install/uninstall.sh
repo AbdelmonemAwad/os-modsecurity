@@ -7,8 +7,13 @@
 # among the services, the page as PHP compiled it, and everything it wrote - Apache's configuration and
 # the sites' certificates exported for it, the Core Rule Set installed, its logs, what it last did. It
 # changes nothing on the firewall but what it laid down: no rule, no table, no interface, the web GUI as
-# it was. Kept: the settings in config.xml, and OPNsense's packages apache24 and ap24-mod_security, as a
-# package's removal keeps what it depends on: pkg delete ap24-mod_security apache24 takes them away.
+# it was. Kept: the settings in config.xml, and OPNsense's packages apache24 and ap24-mod_security unless
+# install/install.sh installed them and no other package needs them - then they go too, as os-appcontrol's
+# ndpi does; the packages they brought with them stay (pkg autoremove takes away those nothing needs).
+
+# which of the two packages install/install.sh installed, read before its folder goes
+OURS=
+[ -f /usr/local/share/os-modsecurity/packages-installed ] && OURS=$(cat /usr/local/share/os-modsecurity/packages-installed)
 
 # Apache first, while the rc script that stops it is there
 /usr/local/etc/rc.d/modsecurity onestop > /dev/null 2>&1 || true
@@ -46,4 +51,26 @@ rm -f /var/lib/php/tmp/opnsense_menu_cache.xml /var/lib/php/tmp/opnsense_acl_cac
     /tmp/opnsense_menu_cache.xml /tmp/opnsense_acl_cache.json
 find /var/lib/php/cache -maxdepth 1 -iname '*_views_opnsense_modsecurity_*' -delete 2> /dev/null || true
 
-echo "Web Application Firewall removed; its settings stay in config.xml, and apache24 and ap24-mod_security stay installed"
+# the packages install/install.sh installed, ModSecurity's module before the Apache it needs, each only
+# when no other package needs it
+KEPT=
+# (a package already gone is neither; a query pkg could not answer keeps it, as pkg delete would take
+# every package needing it along)
+for p in ap24-mod_security apache24; do
+    pkg info -e "$p" > /dev/null 2>&1 || continue
+    case " ${OURS} " in
+    *" $p "*)
+        if NEEDS=$(pkg query '%rn' "$p" 2> /dev/null) && [ -z "${NEEDS}" ] && pkg delete -y "$p" > /dev/null 2>&1; then
+            echo "The package $p, which install/install.sh installed, removed."
+        else
+            KEPT="${KEPT} $p"
+        fi
+        ;;
+    *) KEPT="${KEPT} $p" ;;
+    esac
+done
+if [ -n "${KEPT}" ]; then
+    echo "Web Application Firewall removed; its settings stay in config.xml, and these packages stay installed:${KEPT}"
+else
+    echo "Web Application Firewall removed; its settings stay in config.xml"
+fi

@@ -8,20 +8,22 @@ As the family's other tests of the kind: the scripts are run with sh from a copy
 which their absolute paths are moved into the temporary root - /usr/local, /var/db/os-modsecurity,
 /var/log/modsecurity, /var/tmp/os-modsecurity, /var/run/modsecurity, PHP's /var/lib/php/tmp and
 /var/lib/php/cache, the caches in /tmp, /conf/config.xml, /bin/pkill, /etc/rc.subr - and stand-ins answer
-for what only a firewall has: service, configctl, pkill, httpd and rc.subr, each writing down how it was
+for what only a firewall has: service, configctl, pkill, pkg, httpd and rc.subr, each writing down how it was
 called (pkill kills nothing here). What FreeBSD does otherwise is bridged in the copy: BSD's `cp -R dir/`
 copies what dir holds, written `dir/.` for GNU's cp; BSD's `mktemp -t prefix` takes a prefix, which a
 stand-in gives GNU's mktemp; and install's -o root -g wheel, which a test run by anyone cannot take, is left
 out by a stand-in.
 
-What is checked is what the scripts do: nothing copied without Apache and ModSecurity, or with a syntax
-error; which files are laid down with which modes, where the menu goes, the directories the plugin's files
-go in and who reads them; the Apply at an install - off by default, so Apache stopped; on, applied again with
-the code just copied; configd told, the page as PHP compiled it thrown away and no other page's; Apache
-started, reloaded, stopped and asked about by the rc script, a pid file believed only when its process is
-this Apache; Apache stopped before the files go, and nothing of the plugin left by the removal and by the
+What is checked is what the scripts do: Apache and ModSecurity installed where they are not there, and
+nothing copied when they cannot be, or with a syntax error - no package installed then either; which files
+are laid down with which modes, where the menu goes, the directories the plugin's files go in and who reads
+them; the Apply at an install - off by default, so Apache stopped; on, applied again with the code just
+copied; configd told, the page as PHP compiled it thrown away and no other page's; Apache started,
+reloaded, stopped and asked about by the rc script, a pid file believed only when its process is this
+Apache; Apache stopped before the files go, and nothing of the plugin left by the removal and by the
 package's - its configuration, the Core Rule Set, the certificates, its logs - but OPNsense's packages it
-needs; nothing done by the old package in an upgrade.
+needs, unless the removal's install.sh installed them and no other package needs them; nothing done by the
+old package in an upgrade.
 
     python3 tools/test-install.py"""
 import os
@@ -75,6 +77,22 @@ def check(name, got, want):
     print('%s %s%s' % ('ok  ' if ok else 'FAIL', name, '' if ok else ' - got %r, want %r' % (got, want)))
 
 
+PKG_STUB = r'''db=%(db)s
+case "$1" in
+info) [ "$2" = -e ] && [ -f "$db/$3" ]; exit ;;
+install) echo "pkg $*" >> %(log)s
+    if [ -f "$db/pkg-fail" ]; then
+        echo "pkg: No packages available to install matching '$3' have been found in the repositories"; exit 1
+    fi
+    shift 2
+    for n in "$@"; do : > "$db/$n"; done
+    mkdir -p "$(dirname %(httpd)s)" "$(dirname %(mod)s)"
+    printf '#!/bin/sh\necho "httpd $*" >> %(log)s\n' > %(httpd)s; chmod 755 %(httpd)s; : > %(mod)s ;;
+query) [ -f "$db/pkg-query-fail" ] && exit 3; cat "$db/$3.rdeps" 2> /dev/null; exit 0 ;;
+delete) echo "pkg $*" >> %(log)s; rm -f "$db/$3" ;;
+esac'''
+
+
 class Box:
     """A temporary root, a copy of the repository whose scripts work in it, and the stand-ins."""
 
@@ -109,6 +127,12 @@ class Box:
                             '"${TMPDIR:-/tmp}/$3.XXXXXX"; fi\nexec /usr/bin/env mktemp "$@"', real='mktemp')
         self.stub('install', 'a=""\nwhile [ $# -gt 0 ]; do case "$1" in -o|-g) shift 2 ;; *) a="$a \'$1\'"; shift ;; '
                              'esac; done\neval exec /usr/bin/env install $a', real='install')
+        # pkg: the packages are files in pkgdb; install lays Apache down, or fails while pkg-fail is there;
+        # query answers from NAME.rdeps, or fails while pkg-query-fail is there
+        self.pkgdb = os.path.join(tmp, 'pkgdb')
+        os.makedirs(self.pkgdb)
+        self.stub('pkg', PKG_STUB % {'db': self.pkgdb, 'log': log, 'httpd': self.fake + HTTPD,
+                                     'mod': self.fake + '/usr/local/lib/mod_security2.so'})
         os.makedirs(self.fake + '/bin')
         self.write(self.fake + '/bin/pkill', '#!/bin/sh\necho "pkill $*" >> %s\nexit 1\n' % log, 0o755)
         self.write(self.fake + '/etc/rc.subr', RC_SUBR)
@@ -117,13 +141,24 @@ class Box:
         self.config(OFF)
 
     def apache(self, there=True):
-        """apache24 and ap24-mod_security as the installer looks for them; httpd writing down how it was called."""
+        """apache24 and ap24-mod_security as the installer looks for them, installed by their owner (in pkg's
+        database too); httpd writing down how it was called."""
         for path in (HTTPD, '/usr/local/lib/mod_security2.so'):
             if os.path.exists(self.fake + path):
                 os.remove(self.fake + path)
+        for name in ('apache24', 'ap24-mod_security'):
+            self.pkg(name, there)
         if there:
             self.write(self.fake + HTTPD, '#!/bin/sh\necho "httpd $*" >> %s\n' % self.calls, 0o755)
             self.write(self.fake + '/usr/local/lib/mod_security2.so', '')
+
+    def pkg(self, name, there=True):
+        """A package in pkg's stand-in database, or one of its flags: pkg-fail, pkg-query-fail, NAME.rdeps."""
+        path = os.path.join(self.pkgdb, name)
+        if there:
+            self.write(path, there if isinstance(there, str) else '')
+        elif os.path.exists(path):
+            os.remove(path)
 
     def config(self, text):
         self.write(self.fake + '/conf/config.xml', text)
@@ -228,15 +263,27 @@ with tempfile.TemporaryDirectory() as tmp:
     os.remove(box.fake + XGS)
     shutil.rmtree(box.fake + LOCAL)
 
-    # install.sh: nothing copied without Apache and ModSecurity
+    # install.sh: no Apache and ModSecurity, and a repository the firewall cannot reach: said, nothing copied
+    box.forget()
+    box.pkg('pkg-fail')
+    rc, out = box.run('install/install.sh')
+    check('install.sh without apache24 and ap24-mod_security, the repository out of reach: stopped, said, pkg asked once, '
+          'nothing of the plugin', (rc, out.strip().splitlines()[-1], box.plugin_files(), box.called()),
+          (1, 'Once the firewall reaches it (System: Firmware), install the plugin again.', [],
+           ['pkg install -y apache24 ap24-mod_security']))
+    box.pkg('pkg-fail', False)
+
+    # install.sh: the packages registered, their files missing: said, nothing asked of pkg, nothing copied
+    box.pkg('apache24')
+    box.pkg('ap24-mod_security')
     box.forget()
     rc, out = box.run('install/install.sh')
-    check('install.sh without apache24 and ap24-mod_security: stopped, the command that installs them said, nothing copied',
+    check('install.sh, the packages registered but their files missing: stopped, reinstall said, nothing of the plugin',
           (rc, out.strip().splitlines()[-1], box.plugin_files(), box.called()),
-          (1, 'install them first with:  pkg install apache24 ap24-mod_security', [], []))
-    box.apache()
+          (1, 'Reinstall them in System: Firmware: Packages, then install the plugin again.', [], []))
+    box.apache(False)
 
-    # install.sh: nothing copied when a file of the tree has a syntax error
+    # install.sh: nothing copied, and no package installed, when a file of the tree has a syntax error
     for broken, bad in (('src/opnsense/mvc/app/library/OPNsense/ModSecurity/Site.php',
                          lambda t: t.replace('class Site', 'class Site {', 1)),
                         ('src/opnsense/scripts/modsecurity/crs.py', lambda t: t + '\ndef broken(:\n')):
@@ -246,10 +293,11 @@ with tempfile.TemporaryDirectory() as tmp:
             handle.write(bad(kept))
         box.forget()
         rc, out = box.run('install/install.sh')
-        check('install.sh, %s with a syntax error: stopped, nothing copied, nothing asked' % os.path.basename(broken),
-              (rc != 0, box.plugin_files(), box.called()), (True, [], []))
+        check('install.sh, %s with a syntax error, no Apache: stopped, nothing copied, nothing asked, no package '
+              'installed' % os.path.basename(broken), (rc != 0, box.plugin_files(), box.called()), (True, [], []))
         with open(path, 'w', encoding='utf-8') as handle:
             handle.write(kept)
+    box.apache()
 
     # install.sh, a fresh install: off by default
     for path in CACHES + COMPILED + [OTHER]:
@@ -364,10 +412,56 @@ with tempfile.TemporaryDirectory() as tmp:
           'pid file, compiled page', box.plugin_files(), [])
     check('uninstall.sh: OPNsense\'s packages left, and another page as PHP compiled it', box.there([HTTPD, OTHER]), [HTTPD, OTHER])
     check('uninstall.sh: then configd, without the hook', calls[2:], ['service configd restart'])
-    check('uninstall.sh: said', (rc, out.strip().splitlines()[-1]), (0, 'Web Application Firewall removed; its settings stay in '
-                                                                         'config.xml, and apache24 and ap24-mod_security stay installed'))
+    check('uninstall.sh: said - the packages their owner installed kept', (rc, out.strip().splitlines()[-1]),
+          (0, 'Web Application Firewall removed; its settings stay in config.xml, and these packages stay installed: '
+              'ap24-mod_security apache24'))
     rc, out = box.run('install/uninstall.sh')
     check('uninstall.sh again, nothing there: ends 0', rc, 0)
+
+    # the packages installed by install.sh where they were not there, as XGS: Updates' Plugins tab runs it
+    mark = SHARE + '/packages-installed'
+    box.apache(False)
+    box.forget()
+    rc, out = box.run('install/install.sh')
+    check('install.sh without Apache: both packages installed, recorded, then the plugin',
+          (rc, box.called('pkg'), box.read(mark), out.strip().splitlines()[-1].startswith('Web Application Firewall installed')),
+          (0, ['pkg install -y apache24 ap24-mod_security'], 'apache24 ap24-mod_security\n', True))
+    box.forget()
+    rc, out = box.run('install/install.sh')
+    check('install.sh again over it: no package installed again, the record kept', (rc, box.called('pkg'), box.read(mark)),
+          (0, [], 'apache24 ap24-mod_security\n'))
+    # one of them taken away by hand, then installed again: added to the record, apache24 still in it
+    box.pkg('ap24-mod_security', False)
+    os.remove(box.fake + '/usr/local/lib/mod_security2.so')
+    box.forget()
+    rc, out = box.run('install/install.sh')
+    check('install.sh, ap24-mod_security gone: it alone installed, the record keeps apache24',
+          (rc, box.called('pkg'), (box.read(mark) or '').split()[:2]),
+          (0, ['pkg install -y ap24-mod_security'], ['apache24', 'ap24-mod_security']))
+    box.forget()
+    rc, out = box.run('install/uninstall.sh')
+    check('uninstall.sh: the two packages it installed removed, the module before Apache, then said',
+          (rc, box.called('pkg'), sorted(os.listdir(box.pkgdb)), out.strip().splitlines()[-1]),
+          (0, ['pkg delete -y ap24-mod_security', 'pkg delete -y apache24'], [],
+           'Web Application Firewall removed; its settings stay in config.xml'))
+    # another package needs apache24: kept; a query pkg cannot answer: both kept; one already gone: passed over
+    for case, setup, deleted, said in (
+            ('another package needs apache24', lambda: box.pkg('apache24.rdeps', 'php-apache24\n'),
+             ['pkg delete -y ap24-mod_security'], ', and these packages stay installed: apache24'),
+            ('pkg query fails', lambda: box.pkg('pkg-query-fail'),
+             [], ', and these packages stay installed: ap24-mod_security apache24'),
+            ('ap24-mod_security already gone', lambda: box.pkg('ap24-mod_security', False),
+             ['pkg delete -y apache24'], '')):
+        box.apache(False)
+        rc, out = box.run('install/install.sh')
+        setup()
+        box.forget()
+        rc2, out = box.run('install/uninstall.sh')
+        check('uninstall.sh, %s: what it removed, and said' % case, (rc, rc2, box.called('pkg'), out.strip().splitlines()[-1]),
+              (0, 0, deleted, 'Web Application Firewall removed; its settings stay in config.xml' + said))
+        for flag in ('apache24.rdeps', 'pkg-query-fail'):
+            box.pkg(flag, False)
+    box.apache()
 
     # the package: pkg lays down the files of src/; post-install does the Apply; the old package's scripts do nothing
     # in an upgrade; a removal: Apache stopped, then post-deinstall leaves nothing of the plugin

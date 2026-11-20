@@ -7,23 +7,13 @@
 #   sh install/install.sh
 # Safe to run again after an update: settings in config.xml are kept, and so is the Core Rule Set
 # installed. Off by default: once this has run, no site is published until it is turned on in Settings.
-# It needs OPNsense's own Apache and ModSecurity packages, which a package install brings with it (the
-# Makefile's PLUGIN_DEPENDS) and a copy of the repository does not:
-#   pkg install apache24 ap24-mod_security
+# It needs OPNsense's own Apache and ModSecurity packages, apache24 and ap24-mod_security: a package
+# install brings them with it (the Makefile's PLUGIN_DEPENDS), and this installs them from OPNsense's
+# repository when they are not there - as XGS: Updates' Plugins tab installs a release, with no shell
+# to run pkg in.
 
 set -e
 HERE=$(cd "$(dirname "$0")/.." && pwd)
-
-# Apache and ModSecurity first: without them nothing here can run, and the first Apply would fail with
-# a missing file and no explanation. Said here, with the command that fixes it, before anything is
-# copied. ModSecurity's module is where the package lays it down: libexec/apache24, or lib, where the
-# second XGS 3300 had it (phase 0's lab, 2026-11-20).
-if [ ! -x /usr/local/sbin/httpd ] || { [ ! -f /usr/local/libexec/apache24/mod_security2.so ] && \
-    [ ! -f /usr/local/lib/mod_security2.so ]; }; then
-    echo "Apache or ModSecurity is not installed: /usr/local/sbin/httpd or mod_security2.so is missing."
-    echo "install them first with:  pkg install apache24 ap24-mod_security"
-    exit 1
-fi
 
 # Syntax first, on the tree about to be copied, so nothing with an error is ever copied - as
 # os-blocklists found (2026-10-29). The Python is compiled into a directory of its own, removed after,
@@ -38,6 +28,48 @@ for f in $(find "${HERE}/src" -name '*.py'); do
 done
 rm -rf "${PYC}"
 trap - EXIT
+
+# Apache and ModSecurity next: without them nothing here can run, and the first Apply would fail with
+# a missing file and no explanation. Installed here from OPNsense's own repository when they are not
+# there, as os-appcontrol installs ndpi, and marked so: the removal takes away again only what this
+# installed, and only when no other package needs it. After the syntax check, so a tree that would not
+# go on installs no package, and before anything is copied, so a firewall that cannot reach the
+# repository is told why and has nothing of the plugin. 1.0.0 stopped here and asked for pkg to
+# be run by hand, which XGS: Updates' Plugins tab cannot do (2026-11-20, the second XGS 3300).
+# ModSecurity's module is where the package lays it down: libexec/apache24, or lib, where the second
+# XGS 3300 had it (phase 0's lab, 2026-11-20).
+modsecurity_present() {
+    [ -x /usr/local/sbin/httpd ] && { [ -f /usr/local/libexec/apache24/mod_security2.so ] || \
+        [ -f /usr/local/lib/mod_security2.so ]; }
+}
+if ! modsecurity_present; then
+    WANT=
+    for p in apache24 ap24-mod_security; do
+        pkg info -e "$p" > /dev/null 2>&1 || WANT="${WANT} $p"
+    done
+    if [ -n "${WANT}" ]; then
+        echo "Installing OPNsense's packages:${WANT}"
+        if ! pkg install -y ${WANT}; then
+            echo "The packages${WANT} could not be installed from OPNsense's repository; the plugin was not installed."
+            echo "Once the firewall reaches it (System: Firmware), install the plugin again."
+            exit 1
+        fi
+        # added to what an install before this one recorded, never in its place
+        install -d -m 0755 /usr/local/share/os-modsecurity
+        MARK=/usr/local/share/os-modsecurity/packages-installed
+        OLD=$(cat "${MARK}" 2> /dev/null || true)
+        NEW="${OLD}${WANT}"
+        echo "${NEW# }" > "${MARK}"
+        if ! modsecurity_present; then
+            echo "Apache or ModSecurity is not there after the packages: /usr/local/sbin/httpd or mod_security2.so is missing."
+            exit 1
+        fi
+    else
+        echo "OPNsense's packages apache24 and ap24-mod_security are installed, but /usr/local/sbin/httpd or mod_security2.so is missing."
+        echo "Reinstall them in System: Firmware: Packages, then install the plugin again."
+        exit 1
+    fi
+fi
 
 # plugin files: src/ maps to /usr/local
 # The public keys a release must be signed with for self-update.py and crs.py to install it (their
