@@ -1,6 +1,6 @@
 # Working on this
 
-A plugin, planned: the OWASP Core Rule Set for OPNsense's nginx, through ModSecurity.
+A plugin, written, not released: a Web Application Firewall in front of the sites published through the firewall - Apache and ModSecurity 2.9, OPNsense's own packages, with the OWASP Core Rule Set. Its first part is the sites, their mode and paranoia level, and the Core Rule Set's install; the log of what the rules found, exclusions and the Core Rule Set's updates are its next part.
 
 It is one part of the [os-xgs-npu](https://github.com/AbdelmonemAwad/os-xgs-npu) project, and works the same way.
 

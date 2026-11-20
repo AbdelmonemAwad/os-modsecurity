@@ -1,0 +1,14 @@
+<!--
+    SPDX-License-Identifier: BSD-2-Clause
+    Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+-->
+<acl>
+    <page-services-modsecurity>
+        <name>Services: Web Application Firewall</name>
+        <description>Allow access to the Web Application Firewall: the sites it publishes, how each is inspected, and its settings</description>
+        <patterns>
+            <pattern>ui/modsecurity/*</pattern>
+            <pattern>api/modsecurity/*</pattern>
+        </patterns>
+    </page-services-modsecurity>
+</acl>

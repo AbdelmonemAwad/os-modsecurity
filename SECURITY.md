@@ -21,5 +21,5 @@ with no backports.
 
 ## Worth knowing before you report
 
-- A class that lets one host starve the others, or that the page shows other than it is applied, is a problem - report it here.
+- A request reaching a site's backend in Blocking that the Core Rule Set at its paranoia level refuses, Apache listening where the page did not put it or on a port the web GUI holds, a certificate's key readable by anyone but root, a Core Rule Set installed that is not the one signed, or the page showing other than what is applied, is a problem - report it here.
 - **Never send a configuration backup.** It holds keys and passwords.

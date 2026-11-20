@@ -1,0 +1,107 @@
+<!--
+    SPDX-License-Identifier: BSD-2-Clause
+    Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+-->
+<model>
+    <mount>//OPNsense/ModSecurity</mount>
+    <version>1.0.0</version>
+    <description>Web Application Firewall</description>
+    <items>
+        <!--
+            scripts/modsecurity/common.py and plugins.inc.d/modsecurity.inc read these straight out of
+            config.xml by element name, so the names are not free.
+        -->
+        <general>
+            <!-- Off by default: no site is published or inspected until it is turned on. -->
+            <enabled type="BooleanField">
+                <Required>Y</Required>
+                <Default>0</Default>
+            </enabled>
+            <!-- Where Apache listens: none chosen is every address, as the web GUI's own Listen interfaces.
+                 Enabled ones only, and never os-xgs-npu's own links (common.py INTERNAL). -->
+            <interfaces type="InterfaceField">
+                <Required>N</Required>
+                <Multiple>Y</Multiple>
+                <Filters>
+                    <enable>/^(?!0).*$/</enable>
+                    <if>/^(?!(oxips|oxmgmt|mvmgmt)[0-9]+$).*/</if>
+                </Filters>
+            </interfaces>
+            <!-- The ports of the sites: plain HTTP (and the redirect to HTTPS of a site with a certificate),
+                 and HTTPS. Empty: none of that kind. A port the web GUI holds where Apache would listen is
+                 refused (settled point 8a, ModSecurity.php). -->
+            <http_port type="IntegerField">
+                <Required>N</Required>
+                <Default>80</Default>
+                <MinimumValue>1</MinimumValue>
+                <MaximumValue>65535</MaximumValue>
+                <ValidationMessage>A port, from 1 to 65535, or empty for none.</ValidationMessage>
+            </http_port>
+            <https_port type="IntegerField">
+                <Required>N</Required>
+                <Default>443</Default>
+                <MinimumValue>1</MinimumValue>
+                <MaximumValue>65535</MaximumValue>
+                <ValidationMessage>A port, from 1 to 65535, or empty for none.</ValidationMessage>
+            </https_port>
+        </general>
+        <!-- The sites published through the firewall, each received here, inspected and passed to its
+             backend (svc-2-20). -->
+        <sites>
+            <site type="ArrayField">
+                <enabled type="BooleanField">
+                    <Required>Y</Required>
+                    <Default>1</Default>
+                </enabled>
+                <description type="DescriptionField">
+                    <Required>N</Required>
+                </description>
+                <!-- Apache's ServerName and ServerAlias: names only, a wildcard as the whole first label.
+                     No name in two sites, nor under another site's wildcard (library Site). -->
+                <hostnames type="HostnameField">
+                    <Required>Y</Required>
+                    <AsList>Y</AsList>
+                    <IpAllowed>N</IpAllowed>
+                    <FqdnWildcardAllowed>Y</FqdnWildcardAllowed>
+                    <ValidationMessage>Host names, such as www.example.com, or a wildcard such as *.example.com.</ValidationMessage>
+                </hostnames>
+                <!-- Where the site's requests go once inspected: http or https, a host and a port, a path. -->
+                <backend type="TextField">
+                    <Required>Y</Required>
+                    <Mask>/^https?:\/\/[A-Za-z0-9.:\[\]-]{1,260}(\/[A-Za-z0-9._~%\/-]*)?$/</Mask>
+                    <ValidationMessage>A URL of the site's server, http:// or https://, such as http://192.0.2.10:8080 or https://intranet.example.com.</ValidationMessage>
+                </backend>
+                <!-- The site's certificate of System: Trust: served over HTTPS with it. None: plain HTTP. -->
+                <certificate type="CertificateField">
+                    <Required>N</Required>
+                    <BlankDesc>None: plain HTTP</BlankDesc>
+                </certificate>
+                <!-- Detection only for a new site (settled point 5a): blocking is the owner's switch. -->
+                <mode type="OptionField">
+                    <Required>Y</Required>
+                    <Default>detection</Default>
+                    <OptionValues>
+                        <detection>Detection only</detection>
+                        <blocking>Blocking</blocking>
+                    </OptionValues>
+                </mode>
+                <!-- The Core Rule Set's paranoia levels, 1 to 4 (settled point 6a); 1 for a new site. -->
+                <paranoia type="OptionField">
+                    <Required>Y</Required>
+                    <Default>1</Default>
+                    <OptionValues>
+                        <pl1 value="1">Level 1: fewest false positives</pl1>
+                        <pl2 value="2">Level 2</pl2>
+                        <pl3 value="3">Level 3</pl3>
+                        <pl4 value="4">Level 4: most rules</pl4>
+                    </OptionValues>
+                </paranoia>
+                <!-- An HTTPS backend's certificate checked against the trust store. -->
+                <verify type="BooleanField">
+                    <Required>Y</Required>
+                    <Default>1</Default>
+                </verify>
+            </site>
+        </sites>
+    </items>
+</model>

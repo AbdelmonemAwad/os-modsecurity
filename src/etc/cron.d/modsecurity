@@ -1,0 +1,13 @@
+#-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+#
+# Once a day (setup.py daily): the Web Application Firewall's audit and error logs' day files older than
+# OPNsense keeps its own logs (System: Settings: Logging, Preserve logs, 31 days by default) taken away;
+# then, while it is on and Apache runs, each certificate Apache serves compared with System: Trust's - one
+# renewed there (os-acme-client renews them in place, and OPNsense tells no plugin) is written again and
+# Apache reloaded gracefully with it, nothing else of its configuration changed. Otherwise it lists two
+# directories, reads config.xml once and contacts no one. In /usr/local/etc/cron.d, as the family's other
+# plugins: OPNsense writes its own crontab again from its own jobs.
+
+17 4 * * * root /usr/local/opnsense/scripts/modsecurity/setup.py daily > /dev/null 2>&1
