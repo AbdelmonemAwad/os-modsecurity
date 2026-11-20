@@ -16,6 +16,10 @@ rule.
 Plugin Changelog
 ================
 
+1.0.1
+
+* install.sh installs Apache and ModSecurity where they are not there
+
 1.0.0
 
 * Initial release
