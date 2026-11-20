@@ -189,6 +189,10 @@ namespace {
     $got = $service->statusAction();
     check($got['state'] === 'unreadable' && $got['error']['message'] === 'No answer could be read.',
           'status: an answer that is no JSON said as such');
+    foreach (['[]', '["running"]', '{}', '', 'null', '"running"'] as $answer) {
+        Backend::$answers['modsecurity status'] = $answer;
+        check($service->statusAction()['state'] === 'unreadable', "status: an answer that is no object, $answer, is none");
+    }
     Backend::$answers['modsecurity status'] = json_encode(['state' => 'running']);
 
     $service->request->post = false;
@@ -203,9 +207,12 @@ namespace {
     check(Backend::$asked === ['modsecurity apply', 'modsecurity status'], 'Apply: the Apply, then the status');
     check($got['status'] === 'ok' && $got['sites'] === 2 && $got['current']['state'] === 'running',
           'Apply: its answer, and the status the page draws');
-    Backend::$answers['modsecurity apply'] = '';
-    $got = $service->reconfigureAction();
-    check($got['status'] === 'failed' && $got['message'] === 'No answer could be read.', 'Apply: no answer, said as failed');
+    foreach (['', '[]'] as $answer) {
+        Backend::$answers['modsecurity apply'] = $answer;
+        $got = $service->reconfigureAction();
+        check($got['status'] === 'failed' && $got['message'] === 'No answer could be read.',
+              "Apply: no answer ('$answer'), said as failed");
+    }
 
     Backend::$answers['modsecurity crs install'] = json_encode(['status' => 'installed', 'version' => '4.25.2']);
     fresh();

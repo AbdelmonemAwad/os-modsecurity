@@ -163,9 +163,10 @@ node 24:
   one before kept, an older one taken away; an archive by hand; Apply after an install; one at a time;
 - **the model** - `tools/test-model.php`, 131 checks: Settings and each site checked as a Save checks them,
   each refusal on its field and only where its part changed; the model's XML in step with `common.py`;
-- **the page's API and the hook** - `tools/test-mvc.php`, 26 checks: the status, Apply and Install POST
-  only, the grid's rows, the service while on, the start at boot, a new address followed only on a Listen
-  interface chosen, every configd action asked for there;
+- **the page's API and the hook** - `tools/test-mvc.php`, 33 checks: the status - an answer that is no
+  object, an empty list among them, taken as none - Apply and Install POST only, the grid's rows, the
+  service while on, the start at boot, a new address followed only on a Listen interface chosen, every
+  configd action asked for there;
 - **the page's script** - `tools/test-page.js`, 44 checks, under node with a stand-in jQuery: the cards in
   each state, the fifth on an XGS appliance, the lines under them, each refusal in the page's words, markup
   in a value written as text, Apply from Settings and from Sites, Install, the grid's columns;

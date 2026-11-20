@@ -16,10 +16,14 @@ use OPNsense\Core\Backend;
  */
 class ServiceController extends ApiControllerBase
 {
+    /**
+     * A script's answer: a JSON object, else none - an empty list, nothing, an error's text or a list
+     * are no answer (configctl has given an empty list for a status, the family found on 2026-11-20).
+     */
     private function json($action)
     {
         $result = json_decode((string)(new Backend())->configdRun('modsecurity ' . $action), true);
-        return is_array($result) ? $result : null;
+        return is_array($result) && count($result) && !array_is_list($result) ? $result : null;
     }
 
     /**
