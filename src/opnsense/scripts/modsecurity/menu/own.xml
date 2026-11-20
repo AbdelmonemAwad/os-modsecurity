@@ -1,0 +1,14 @@
+<!--
+    SPDX-License-Identifier: BSD-2-Clause
+    Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+-->
+<menu>
+    <!--
+        Where os-xgs-npu is not installed: under Services, as Services: Web Application Firewall - a
+        page of its own, not part of nginx (settled point 10a). No order is given. place-menu.sh copies
+        this file, or xgs.xml, to the model's Menu/Menu.xml.
+    -->
+    <Services>
+        <ModSecurity VisibleName="Web Application Firewall" cssClass="fa fa-shield fa-fw" url="/ui/modsecurity"/>
+    </Services>
+</menu>
