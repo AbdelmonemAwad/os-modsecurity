@@ -24,8 +24,9 @@ and passed to the site's backend.
 > release.~~
 >
 > **Written, not released (2026-11-20).** The first part is here: the sites, each one's mode and
-> paranoia level, its certificate, and the Core Rule Set's install. Off by default. It has not run on an
-> appliance yet: what was run is under [What is tested](#what-is-tested).
+> paranoia level, its certificate, and the Core Rule Set's install. Off by default. ~~It has not run on an
+> appliance yet.~~ It ran on the second XGS 3300, the XGS 136 and a plain OPNsense on 2026-11-20, in plain
+> HTTP: what was run is under [What is tested](#what-is-tested).
 
 <p align="center"><b>Contents:</b> <a href="#what-it-does">What it does</a> &middot; <a href="#engine-and-why-it-is-not-the-plans">Engine, and why it is not the plan's</a> &middot; <a href="#where-the-rules-come-from">Where the rules come from</a> &middot; <a href="#what-it-does-not-do">What it does not do</a> &middot; <a href="#not-yet-and-why">Not yet, and why</a> &middot; <a href="#what-is-tested">What is tested</a> &middot; <a href="#installation">Installation</a> &middot; <a href="#updates">Updates</a> &middot; <a href="#where-it-fits">Where it fits</a> &middot; <a href="#licence">Licence</a></p>
 
@@ -171,7 +172,9 @@ The page then says it was installed by hand.
   by itself.
 - **the Core Rule Set's releases** - none is published yet: the owner's signing repository has no job for
   them yet. Until then Install says the line has no release, and the lab installs one by hand.
-- **the lab** - none of this has run on an appliance yet. The plan's test: a site behind the firewall,
+- **the lab** - ~~none of this has run on an appliance yet.~~ run on 2026-11-20 on the second XGS 3300, the
+  XGS 136 and a plain OPNsense in plain HTTP ([What is tested](#what-is-tested)); TLS - a site's certificate, an
+  HTTPS backend's - waits for a test certificate. The plan's test: a site behind the firewall,
   known attacks - SQL injection, a script tag, a path with `../` - refused in Blocking and logged in
   Detection only, ordinary requests passing, each finding in the log with its rule id; on the second XGS
   3300, the XGS 136 and a plain OPNsense. Not measured yet: Apache with the plugin's configuration, TLS
@@ -260,7 +263,43 @@ SQL injection, a script tag and a path with `../` passed and were logged with ru
 with the ids; the rates above; and `pkg delete` of the two packages leaving nothing behind (`pkg
 autoremove` then takes apr, gdbm and yajl, which they brought).
 
-Not tested: anything on an appliance (above) - Apache itself has not read this configuration yet.
+On the appliances and a plain OPNsense, the same day, after one review and one round of its fixes, from this
+branch at 39122e2, as a user meets it - the second XGS 3300 (os-xgs-npu installed), the XGS 136 and a plain
+OPNsense in qemu without os-xgs-npu - in plain HTTP (a test certificate for the TLS points waits), each box put
+back as found after it:
+
+- **the packages and the rules** - apache24 and ap24-mod_security from OPNsense's own repository (5 packages,
+  mod_reqtimeout there); the Core Rule Set v4.25.2 installed by hand, its signature good by the pinned key and
+  its sha256 phase 0's, 27 rule files; Settings' Install says, in its own words, that no release of the 4.25
+  line is published for the plugin yet, and changes nothing;
+- **the web GUI** - a port the GUI holds refused, with the message on how to move the GUI, config.xml unchanged;
+- **one site, Detection only** - Apply 0.7 to 0.8 s, Apache running on F1's addresses alone; an SQL injection,
+  a script tag and a `../` path answered and logged with 942100, 941100 and 930100; every audit record JSON,
+  Authorization and Cookie masked;
+- **Blocking** - the three refused with 403 and a plain request 200; a host no site names 403 by the catch-all;
+  a 200 KiB form and a 13 MiB file 413; in Detection only both 200;
+- **two sites** - each its own record (920230 in shop's, not www's); a host name of another site refused at the
+  save; a configuration Apache refuses: Apply refused ("config") and Apache left running the one before;
+- **the listeners** - a change of F1's address applied again and another interface's not; every address; no
+  Listen interface, no Apply; a slow client given 408 within
+  40 s (21.1 s);
+- **a boot** - Apache running after it, the plain request 200; a reload 0.7 s, a start 0.8 s, `httpd -t` 0.12 s,
+  2 processes, 109,428 KiB resident;
+- **its cost** - 2000 requests one at a time on the second XGS 3300: 135 a second in Detection only (p50 7.03
+  ms), 133 in Blocking (p50 7.11 ms); no flow of the sites' ports in the coprocessor's hardware;
+- **the rest** - the audit log pruned by its age; the backend down: 503, then 200 within a second of it coming
+  back; off: no Apache and gone from System: Services; the removal and a package built, added and deleted
+  leaving nothing, the two Apache packages kept until deleted by name.
+
+The lab's first runs found faults of the lab's own scripts alone (configd's name for an action with a dot, a
+check reading a line the next call had written over, a field off by one, the GUI's redirect left on port 80
+when the GUI moved, a console command too long); fixed there and run again. The plugin showed none.
+
+Not tested: TLS - a site's certificate, an HTTPS backend's checked against its name, a renewed certificate taken
+by the daily check (a test certificate waits); a paranoia level above 1 and its cost; false positives on real
+sites; the page in a browser.
+
+~~Not tested: anything on an appliance (above) - Apache itself has not read this configuration yet.~~
 
 ## Installation
 
