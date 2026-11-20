@@ -675,6 +675,70 @@ check('put back: the file as it was, its mode too, and the new one gone', [open(
                                                                           os.path.exists(os.path.join(spot, 'b'))],
       ['before', '0o600', False])
 
+# the certificates Apache serves, taken again each day as System: Trust has them (renewed in place)
+got = apply()
+CRT = os.path.join(CERTS, '6a1b2c3d4e5f6.crt')
+served = open(CRT).read()
+del calls[:]
+check('each day, nothing renewed: nothing written, nothing reloaded', [setup.renewed(CONFIG, run=fake_run,
+                                                                                     sleep=lambda s: None), rc_calls()],
+      [{'status': 'ok', 'renewed': []}, []])
+
+
+def renewal(name):
+    """A certificate of www.example.com issued again by the same authority, as an ACME client renews one."""
+    openssl('req', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:prime256v1', '-nodes', '-keyout',
+            PKI + '/%s.key' % name, '-out', PKI + '/%s.csr' % name, '-subj', '/CN=www.example.com')
+    openssl('x509', '-req', '-in', PKI + '/%s.csr' % name, '-CA', PKI + '/ca.crt', '-CAkey', PKI + '/ca.key',
+            '-CAcreateserial', '-out', PKI + '/%s.crt' % name, '-days', '2')
+    return FIXTURE.replace('@CRT@', b64(PKI + '/%s.crt' % name)).replace('@PRV@', b64(PKI + '/%s.key' % name)) \
+        .replace('@CA@', b64(PKI + '/ca.crt')).replace('@NOKEY@', '')
+
+
+config(text=renewal('renewed'))
+with open(CONF, 'rb') as handle:
+    conf_before = handle.read()
+del calls[:]
+alive.update(pid=4242, after_reload='same')
+got = setup.renewed(CONFIG, run=fake_run, sleep=lambda s: None)
+check('a certificate renewed in System: Trust: written again with its chain and its key, Apache reloaded gracefully',
+      [got['status'], got['renewed'], rc_calls(), open(CRT).read() == common.clean_pem(open(PKI + '/renewed.crt').read()) +
+       common.clean_pem(ca_pem), open(CRT.replace('.crt', '.key')).read() == common.clean_pem(open(PKI + '/renewed.key').read()),
+       oct(os.stat(CRT.replace('.crt', '.key')).st_mode & 0o777)],
+      ['ok', ['6a1b2c3d4e5f6'], ['onereload'], True, True, '0o600'])
+check('nothing else of the configuration written: a setting saved and not applied still waits for Apply',
+      open(CONF, 'rb').read() == conf_before, True)
+check('said with the last Apply\'s answer, which it keeps', [common.read_json(setup.paths()['apply'])['renewed'],
+                                                             common.read_json(setup.paths()['apply'])['status']],
+      [['6a1b2c3d4e5f6'], 'ok'])
+served = open(CRT).read()
+config(text=renewal('again'))
+del calls[:]
+alive.update(pid=4242, after_reload=None, after_start=4243)
+got = setup.renewed(CONFIG, run=fake_run, sleep=lambda s: None)
+check('Apache gone after the reload with a renewed certificate: the ones before put back and run again, said',
+      [got['code'], got['state'], rc_calls(), open(CRT).read() == served, common.read_json(setup.paths()['apply'])['code']],
+      ['restored', 'running', ['onereload', 'onestart'], True, 'restored'])
+del calls[:]
+alive.update(pid=None)
+check('Apache not running: nothing done - its next start is an Apply, which exports them all',
+      [setup.renewed(CONFIG, run=fake_run, sleep=lambda s: None)['renewed'], rc_calls(), open(CRT).read() == served],
+      [[], [], True])
+config(text=renewal('again'), change=lambda r: setattr(r.find('OPNsense/ModSecurity/general/enabled'), 'text', '0'))
+alive.update(pid=4243)
+check('the plugin off: nothing done', [setup.renewed(CONFIG, run=fake_run, sleep=lambda s: None)['renewed'], rc_calls()],
+      [[], []])
+config()
+alive.update(pid=None)
+printed = __import__('io').StringIO()
+real_stdout, sys.stdout = sys.stdout, printed
+setup.main(['setup.py', 'daily'])
+sys.stdout = real_stdout
+check('setup.py daily, cron.d\'s: the logs pruned, then the certificates', sorted(json.loads(printed.getvalue())),
+      ['certificates', 'pruned'])
+check('cron.d runs it each day', open(os.path.join(ROOT, 'src/etc/cron.d/modsecurity')).read().strip().splitlines()[-1],
+      '17 4 * * * root /usr/local/opnsense/scripts/modsecurity/setup.py daily > /dev/null 2>&1')
+
 # one Apply at a time
 os.makedirs(common.STATE, exist_ok=True)
 holder = open(setup.paths()['lock'], 'w')

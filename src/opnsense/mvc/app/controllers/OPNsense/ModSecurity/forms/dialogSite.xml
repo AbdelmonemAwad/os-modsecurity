@@ -32,7 +32,7 @@
         <id>site.certificate</id>
         <label>Certificate</label>
         <type>dropdown</type>
-        <help>The site's certificate of System: Trust, with its private key: the site is then served over HTTPS, and its plain HTTP requests are sent there. None: the site is served over plain HTTP.</help>
+        <help>The site's certificate of System: Trust, with its private key: the site is then served over HTTPS, and its plain HTTP requests are sent there. None: the site is served over plain HTTP. Renewed in System: Trust - by an ACME client, say - it is served from the next Apply, or within a day without one.</help>
     </field>
     <field>
         <id>site.mode</id>

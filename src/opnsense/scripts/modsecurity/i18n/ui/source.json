@@ -85,7 +85,7 @@
  "The port of the sites with a certificate: 443 by default. Empty: no HTTPS. The web GUI listens on 443 of every interface until it is moved, as for the HTTP port.",
  "The port of the sites without a certificate, and of the redirect to HTTPS of those with one: 80 by default. Empty: no plain HTTP. A port the web GUI listens on where the sites would be received is refused: move the GUI in System: Settings: Administration - another TCP port, or Listen interfaces other than the ones chosen here.",
  "The settings could not be applied:",
- "The site's certificate of System: Trust, with its private key: the site is then served over HTTPS, and its plain HTTP requests are sent there. None: the site is served over plain HTTP.",
+ "The site's certificate of System: Trust, with its private key: the site is then served over HTTPS, and its plain HTTP requests are sent there. None: the site is served over plain HTTP. Renewed in System: Trust - by an ACME client, say - it is served from the next Apply, or within a day without one.",
  "The site's own server, which its inspected requests are passed to: http:// or https://, an address or a name, a port, and a path where the site is not at the server's root - http://192.0.2.10:8080 or https://intranet.example.com/app. The host name a browser asked for is passed on as it is: an https:// backend is asked for that name too, and its certificate is checked against it.",
  "The web GUI listens on a port chosen here - move it in System: Settings: Administration (another TCP port, or Listen interfaces without the ones chosen here), or choose another port in Settings:",
  "The web GUI listens on a port chosen here:",

@@ -10,7 +10,9 @@
                        it; a JSON answer, kept in /var/db/os-modsecurity/apply.json for the page
     setup.py render    the configuration Apply would write, printed; nothing written, nothing run
     setup.py prune     the log files older than OPNsense keeps its own logs (System: Settings: Logging,
-                       31 days by default) taken away - each day by cron, and at each Apply
+                       31 days by default) taken away - at each Apply, and each day (daily)
+    setup.py daily     cron.d's, each day: prune, then the certificates Apache serves as System: Trust has
+                       them now - one renewed is written again and Apache reloaded with it (renewed())
     setup.py enabled   {"enabled": ..., "read": ...} - for the installer and the package's scripts
 
 What Apply writes, in /usr/local/etc/os-modsecurity: httpd.conf and modsecurity.conf, rendered from the
@@ -639,6 +641,83 @@ def _apply(config, run, sleep, listen_found):
                 'as it was' % said)
 
 
+def read_text(path):
+    try:
+        with open(path, encoding='utf-8') as handle:
+            return handle.read()
+    except (OSError, ValueError):
+        return None
+
+
+def renewed(config=None, run=subprocess.run, sleep=time.sleep):
+    """The certificates Apache serves, as System: Trust has them now - each day, by cron.d (setup.py daily).
+    OPNsense calls no plugin when a certificate changes, and os-acme-client renews its certificates in place:
+    each one the running configuration names (certs/<refid>.crt) whose text or key System: Trust now gives
+    otherwise is written again under its name, and Apache reloaded gracefully to take it, as an Apply would.
+    Nothing else of the configuration is written, so a setting saved and not applied still waits for Apply.
+    Where Apache does not survive the reload, the certificates before are put back and Apache started with
+    them again (take()). Its answer {'status', 'renewed': [refid, ...]} joins the last Apply's when it did
+    anything; nothing is done while the plugin is off or Apache is not running - its next start is an Apply,
+    which exports them all."""
+    p = paths()
+    os.makedirs(common.STATE, exist_ok=True)
+    with open(p['lock'], 'w', encoding='utf-8') as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            return {'status': 'failed', 'code': 'busy', 'renewed': []}
+        try:
+            root = common.read_root(config)
+        except (OSError, ValueError) as error:
+            return {'status': 'failed', 'code': 'config.xml', 'detail': str(error), 'renewed': []}
+        if not common.general(root)['enabled'] or not running_pid():
+            return {'status': 'ok', 'renewed': []}
+        try:
+            exported = sorted(name[:-4] for name in os.listdir(p['certs']) if name.endswith('.crt'))
+        except OSError:
+            exported = []
+        files, names = {}, []
+        for refid in exported:
+            found = common.certificate(root, refid)
+            if found is None:
+                continue                    # gone from System: Trust: the next Apply leaves its site out
+            where = cert_paths(p['certs'], refid)
+            if read_text(where['crt']) != found['crt'] or read_text(where['key']) != found['key']:
+                files[where['crt']] = (found['crt'], 0o644)
+                files[where['key']] = (found['key'], 0o600)
+                names.append(refid)
+        if not files:
+            return {'status': 'ok', 'renewed': []}
+        record = common.read_json(p['apply'])
+        try:
+            previous = put(files)
+        except OSError as error:
+            result = {'status': 'failed', 'code': 'write', 'detail': str(error), 'renewed': [],
+                      'message': 'a renewed certificate could not be written (%s); Apache was left as it was' % error}
+        else:
+            ended, said = take(previous, run, sleep)
+            if ended in ('reloaded', 'started'):
+                result = {'status': 'ok', 'renewed': names,
+                          'message': 'Apache reloaded with the certificates renewed in System: Trust'}
+                record.update({'renewed': names, 'renewed_at': int(time.time())})
+            elif ended == 'restored':
+                result = {'status': 'failed', 'state': 'running', 'code': 'restored', 'detail': said, 'renewed': [],
+                          'message': 'Apache could not run the renewed certificates (%s); the ones before run '
+                          'again' % said}
+            else:
+                result = {'status': 'failed', 'state': 'stopped', 'code': 'start', 'detail': said, 'renewed': [],
+                          'listen': [], 'message': 'Apache did not run with the renewed certificates: ' + said}
+        if result['status'] == 'failed':
+            record.update({k: result.get(k, '') for k in ('status', 'state', 'code', 'detail', 'message')})
+            record['listen'] = result.get('listen', record.get('listen', []))
+            record['at'] = int(time.time())
+        try:
+            common.write_json(p['apply'], record)
+        except OSError:
+            pass
+        return result
+
+
 def preserve(root):
     """The days OPNsense keeps its own logs (System: Settings: Logging, Preserve logs), 31 by default."""
     value = common.text(root.find('OPNsense/Syslog/general') if root is not None else None, 'maxpreserve')
@@ -692,14 +771,17 @@ def main(argv):
         for path, data in files.items():
             sys.stdout.write('# ---- %s\n%s' % (path, data))
         return 0
-    if command == 'prune':
+    if command in ('prune', 'daily'):
         try:
             root = common.read_root()
         except (OSError, ValueError):
             root = None
-        print(json.dumps({'pruned': prune(root)}))
+        out = {'pruned': prune(root)}
+        if command == 'daily':
+            out['certificates'] = renewed()
+        print(json.dumps(out))
         return 0
-    print('usage: setup.py apply | render | prune | enabled', file=sys.stderr)
+    print('usage: setup.py apply | render | prune | daily | enabled', file=sys.stderr)
     return 0
 
 

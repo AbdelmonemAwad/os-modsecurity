@@ -61,7 +61,13 @@ installed), one page, off by default:
   Backend. The host name the browser asked for is passed on (`ProxyPreserveHost`, for backends that serve
   several sites) and asked of the backend too (SNI), so the backend must present a certificate for the
   site's public name. A backend whose certificate names only itself needs the check turned off for its
-  site; a switch per site to pass the backend's own name instead is for the plan's next part.
+  site; a switch per site to pass the backend's own name instead is for the plan's next part. A
+  certificate renewed in System: Trust - os-acme-client renews them in place, and OPNsense tells no plugin -
+  is served from the next Apply, or within a day without one: each day at 04:17 the certificates Apache
+  serves are compared with System: Trust's, and one renewed is written again and Apache reloaded gracefully
+  with it, nothing else of its configuration changed, so a setting saved and not applied still waits for
+  Apply. To take it at once, an ACME automation or System: Settings: Cron can run the configd action "Apply
+  the Web Application Firewall's settings".
 - **where Apache listens** - Settings' Listen interfaces' addresses, as OPNsense's web GUI takes its own
   (followed when one gets a new address), or every address; an HTTP port (80) and an HTTPS port (443). A
   port the web GUI holds where Apache would listen is refused, never taken, and the page says how to move

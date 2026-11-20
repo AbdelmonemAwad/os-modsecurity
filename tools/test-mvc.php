@@ -580,6 +580,9 @@ namespace {
     preg_match_all('/^\[([\w.]+)\]$/m', $actions, $found);
     check($found[1] === ['status', 'apply', 'crs.install', 'start', 'stop', 'restart'],
           'configd: status, apply and crs install for the page; start, stop and restart for the service');
+    preg_match_all('/^\[([\w.]+)\]\n(?:[^\[\n][^\n]*\n)*?description:([^\n]+)$/m', $actions, $described);
+    check($described[1] === ['apply', 'crs.install'] && strpos($described[2][0], 'Apply the Web Application Firewall') === 0,
+          'Apply and the install described, so System: Settings: Cron and an ACME automation can run them: ' . implode(', ', $described[1]));
     $asked = [];
     foreach ([$mvc . '/Api/ServiceController.php', $root . '/src/etc/inc/plugins.inc.d/modsecurity.inc', $root . '/install/install.sh',
               $root . '/pkg/post-install.sh'] as $file) {
