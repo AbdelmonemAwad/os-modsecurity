@@ -45,7 +45,12 @@ installed), one page, off by default:
 - **modes** - *Detection only*, every new site's first mode: each request is inspected and what the rules
   find is written to the audit log, and the request passes. *Blocking*: a request the Core Rule Set judges
   an attack, by its anomaly score, is refused with 403. ModSecurity's own `SecRuleEngine`, set in each
-  site's virtual hosts.
+  site's virtual hosts. In Blocking two more things are refused: a request body larger than 12.5 MiB with
+  files, or 128 KiB without - a photo or file upload, a large JSON or form - with 413, before the Core Rule
+  Set reads it (ModSecurity's recommended limits; what Detection only does with such a body is not measured
+  yet); and, at every paranoia level, a method other than GET, HEAD, POST and OPTIONS (rule 911100) or a
+  request content type the Core Rule Set does not list (920420), so a WebDAV or REST backend - PUT, DELETE,
+  PROPFIND - stays in Detection only until a site can have exclusions. The site dialog says both.
 - **paranoia levels** - 1 to 4, the Core Rule Set's own: level 1 for a new site, the fewest false
   positives; each level up runs more rules. Set for each site by a rule before the Core Rule Set's start
   (ids 19001 and on), by the host name its request names, which Apache chose the site by.
@@ -141,7 +146,9 @@ The page then says it was installed by hand.
 - **the table of what the rules found, exclusions, the Core Rule Set's updates** - the plan's next part:
   the incidents read from the JSON audit log with their rule ids (settled point 7a; phase 0 measured
   ModSecurity 2.9.15 accepting `SecAuditLogFormat JSON` and its records carrying the ids), exclusions for a
-  site, and following the Core Rule Set's releases - the 4.25 line or the newest 4.x - by itself.
+  site - its methods, its content types and a request body limit of its own among them, beside the one
+  limit every site has now - and following the Core Rule Set's releases - the 4.25 line or the newest 4.x -
+  by itself.
 - **the Core Rule Set's releases** - none is published yet: the owner's signing repository has no job for
   them yet. Until then Install says the line has no release, and the lab installs one by hand.
 - **the lab** - none of this has run on an appliance yet. The plan's test: a site behind the firewall,

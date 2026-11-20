@@ -32,7 +32,7 @@
  "Core Rule Set",
  "Description",
  "Detection only",
- "Detection only: every request is inspected and what the rules find is logged, and the request passes - the first mode of a new site, to see what the rules would refuse before they refuse it. Blocking: a request the rules judge an attack is refused with 403.",
+ "Detection only: every request is inspected and what the rules find is logged, and the request passes - the first mode of a new site, to see what the rules would refuse before they refuse it. Blocking: a request the rules judge an attack is refused with 403. So is, at every level, a method other than GET, HEAD, POST and OPTIONS - a WebDAV or REST backend's PUT, DELETE or PROPFIND - or a content type the Core Rule Set does not list: keep such a site in Detection only. And in Blocking a request body larger than 12.5 MiB with files, or 128 KiB without, is refused with 413.",
  "Each site is published here: its requests end on this firewall, ModSecurity inspects them with the OWASP Core Rule Set, and Apache passes them on to the site's backend. A site reached through a port forward instead never meets these rules.",
  "Edit site",
  "Enable",

@@ -38,7 +38,7 @@
         <id>site.mode</id>
         <label>Mode</label>
         <type>dropdown</type>
-        <help>Detection only: every request is inspected and what the rules find is logged, and the request passes - the first mode of a new site, to see what the rules would refuse before they refuse it. Blocking: a request the rules judge an attack is refused with 403.</help>
+        <help>Detection only: every request is inspected and what the rules find is logged, and the request passes - the first mode of a new site, to see what the rules would refuse before they refuse it. Blocking: a request the rules judge an attack is refused with 403. So is, at every level, a method other than GET, HEAD, POST and OPTIONS - a WebDAV or REST backend's PUT, DELETE or PROPFIND - or a content type the Core Rule Set does not list: keep such a site in Detection only. And in Blocking a request body larger than 12.5 MiB with files, or 128 KiB without, is refused with 413.</help>
     </field>
     <field>
         <id>site.paranoia</id>

@@ -404,6 +404,13 @@ check('the audit log: JSON, a file a day, the parts kept without the request\'s 
 check('the headers that carry credentials masked in it, by rule 19000', 'id:19000,phase:1,pass,nolog,t:none,'
       'sanitiseRequestHeader:Authorization,sanitiseRequestHeader:Proxy-Authorization,sanitiseRequestHeader:Cookie,'
       'sanitiseResponseHeader:Set-Cookie' in msconf, True)
+limits = {line.split()[0]: int(line.split()[1]) for line in msconf.splitlines()
+          if line.startswith(('SecRequestBodyLimit ', 'SecRequestBodyNoFilesLimit '))}
+check('the request body\'s limits, refused in Blocking: what the Mode\'s help says, 12.5 MiB with files and 128 KiB without',
+      [limits['SecRequestBodyLimit'] / (1 << 20), limits['SecRequestBodyNoFilesLimit'] / (1 << 10),
+       'SecRequestBodyLimitAction Reject' in msconf,
+       'larger than 12.5 MiB with files, or 128 KiB without, is refused with 413' in helps['site.mode'],
+       'GET, HEAD, POST and OPTIONS' in helps['site.mode']], [12.5, 128.0, True, True, True])
 check('nothing reported to ModSecurity\'s makers', 'SecStatusEngine Off' in msconf, True)
 check('ModSecurity\'s work files where Apache\'s children write them', 'SecTmpDir "%s/tmp/"' % common.WORK in msconf, True)
 
