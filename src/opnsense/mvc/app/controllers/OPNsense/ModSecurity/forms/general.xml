@@ -1,0 +1,30 @@
+<!--
+    SPDX-License-Identifier: BSD-2-Clause
+    Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+-->
+<form>
+    <field>
+        <id>modsecurity.general.enabled</id>
+        <label>Enable</label>
+        <type>checkbox</type>
+        <help>Publish the sites of the Sites tab through this firewall: each request is received here, inspected by ModSecurity with the OWASP Core Rule Set, and passed to the site's backend. Off by default. A new site only logs what the rules find, until its Mode is Blocking.</help>
+    </field>
+    <field>
+        <id>modsecurity.general.interfaces</id>
+        <label>Listen interfaces</label>
+        <type>select_multiple</type>
+        <help>The interfaces whose addresses the sites are received on. None chosen: every address of this firewall. A site reached from another network also needs a rule on that interface passing its port to This Firewall (Firewall: Rules): none is made here.</help>
+    </field>
+    <field>
+        <id>modsecurity.general.http_port</id>
+        <label>HTTP port</label>
+        <type>text</type>
+        <help>The port of the sites without a certificate, and of the redirect to HTTPS of those with one: 80 by default. Empty: no plain HTTP. A port the web GUI listens on where the sites would be received is refused: move the GUI in System: Settings: Administration - another TCP port, or Listen interfaces other than the ones chosen here.</help>
+    </field>
+    <field>
+        <id>modsecurity.general.https_port</id>
+        <label>HTTPS port</label>
+        <type>text</type>
+        <help>The port of the sites with a certificate: 443 by default. Empty: no HTTPS. The web GUI listens on 443 of every interface until it is moved, as for the HTTP port.</help>
+    </field>
+</form>

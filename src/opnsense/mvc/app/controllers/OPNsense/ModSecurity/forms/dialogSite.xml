@@ -1,0 +1,54 @@
+<!--
+    SPDX-License-Identifier: BSD-2-Clause
+    Copyright (c) 2026 Abdelmonem Awad <eg2@live.com>
+-->
+<form>
+    <field>
+        <id>site.enabled</id>
+        <label>Enabled</label>
+        <type>checkbox</type>
+    </field>
+    <field>
+        <id>site.hostnames</id>
+        <label>Host names</label>
+        <type>select_multiple</type>
+        <style>tokenize</style>
+        <allownew>true</allownew>
+        <help>The names this site is reached by, as a browser asks for them: www.example.com, or a wildcard for every name under a domain, *.example.com. The first is the site's own name. A host name belongs to one site: none may be another site's, or under another site's wildcard. A request for a name no site has is refused, and not inspected.</help>
+    </field>
+    <field>
+        <id>site.backend</id>
+        <label>Backend</label>
+        <type>text</type>
+        <help>The site's own server, which its inspected requests are passed to: http:// or https://, an address or a name, a port, and a path where the site is not at the server's root - http://192.0.2.10:8080 or https://intranet.example.com/app. The Host a browser asked for is passed on as it is.</help>
+    </field>
+    <field>
+        <id>site.verify</id>
+        <label>Check the backend's certificate</label>
+        <type>checkbox</type>
+        <help>For an https:// backend: its certificate must be valid for its name and signed by an authority of this firewall's trust store. Off: any certificate is taken - only for a server on a network you trust.</help>
+    </field>
+    <field>
+        <id>site.certificate</id>
+        <label>Certificate</label>
+        <type>dropdown</type>
+        <help>The site's certificate of System: Trust, with its private key: the site is then served over HTTPS, and its plain HTTP requests are sent there. None: the site is served over plain HTTP.</help>
+    </field>
+    <field>
+        <id>site.mode</id>
+        <label>Mode</label>
+        <type>dropdown</type>
+        <help>Detection only: every request is inspected and what the rules find is logged, and the request passes - the first mode of a new site, to see what the rules would refuse before they refuse it. Blocking: a request the rules judge an attack is refused with 403.</help>
+    </field>
+    <field>
+        <id>site.paranoia</id>
+        <label>Paranoia level</label>
+        <type>dropdown</type>
+        <help>How many of the Core Rule Set's rules run: 1 has the fewest false positives and suits most sites; each level up adds rules that find more attacks, and refuse more ordinary requests. Raise it after the site has run in Detection only at it.</help>
+    </field>
+    <field>
+        <id>site.description</id>
+        <label>Description</label>
+        <type>text</type>
+    </field>
+</form>
