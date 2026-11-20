@@ -296,6 +296,15 @@ The lab's first runs found faults of the lab's own scripts alone (configd's name
 check reading a line the next call had written over, a field off by one, the GUI's redirect left on port 80
 when the GUI moved, a console command too long); fixed there and run again. The plugin showed none.
 
+Found after the release, the same evening: 1.0.0 did not install on an appliance without Apache. os-xgs-npu's
+update installs every plugin an appliance never had, and on the second XGS 3300 and the XGS 136 this one's
+install.sh stopped and asked for `pkg install apache24 ap24-mod_security` to be run by hand - the lab above
+had installed both packages before the plugin, so an owner's way was never run. Since 1.0.1 install.sh
+installs them itself. Run on both appliances from a box without Apache, as the update runs it: with no
+repository it could reach, it said so and left nothing installed; then the five packages and the plugin,
+in 3 and 4 s; again over it, no package installed twice; the removal took away the two packages it had
+installed, and the plugin.
+
 Not tested: TLS - a site's certificate, an HTTPS backend's checked against its name, a renewed certificate taken
 by the daily check (a test certificate waits); a paranoia level above 1 and its cost; false positives on real
 sites; the page in a browser.
