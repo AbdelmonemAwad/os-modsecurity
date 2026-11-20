@@ -397,6 +397,7 @@ const codes = [['packages', '', 'apache24 and ap24-mod_security are not installe
     ['module', 'mod_ssl.so', 'Apache has no module the configuration needs: mod_ssl.so'],
     ['certificate', 'abc', 'A site\'s certificate is not in System: Trust with its private key: abc'],
     ['start', 'AH00072: make_sock', 'Apache did not run: AH00072: make_sock'],
+    ['restored', 'AH00072: make_sock', 'Apache could not run the new configuration, and runs the one before again: AH00072: make_sock'],
     ['write', 'disk full', 'The settings could not be applied: its own words']];
 check('each reason by its code, in the page\'s words, the detail after them; an unknown code with its message',
     codes.map(function (c) {

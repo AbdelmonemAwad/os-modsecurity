@@ -62,9 +62,13 @@ installed), one page, off by default:
   Settings: Logging, 31 days by default). The page's table of what the rules found is the plan's next part.
 - **Apply** - writes Apache's configuration from the page's settings with the plugin's templates
   (`templates/OPNsense/ModSecurity`), has Apache test it (`httpd -t`), and only then starts or reloads Apache
-  with it: a configuration Apache refuses is put back as it was, and Apache goes on with what it had. A site
-  that cannot be served - a certificate without its key, no port for its kind - is left out, named on the
-  page with its reason.
+  with it: a configuration Apache refuses is put back as it was, and Apache goes on with what it had.
+  `httpd -t` does not bind a port or load a certificate, so the files before - the configuration and the
+  certificates it names - are kept until Apache runs the new ones: a graceful restart Apache does not survive
+  (a port another program holds) puts them back and starts Apache with them again, and the page says the one
+  before runs again; a start that fails puts them back and leaves Apache stopped, as it was. A reload is
+  waited for until Apache's own log says it is done, 30 seconds at most. A site that cannot be served - a
+  certificate without its key, no port for its kind - is left out, named on the page with its reason.
 - **System: Services** lists it while it is on; it starts at boot while it is on.
 
 Nothing here adds a firewall rule: a site reached from another network needs a rule on that interface

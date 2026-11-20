@@ -18,9 +18,13 @@ plugin's templates (templates/OPNsense/ModSecurity) with Jinja2 as configd rende
 each site's certificate of System: Trust with its chain and key (certs/). Apache runs it as its own
 instance - its pid file /var/run/modsecurity.pid - never the apache24 package's configuration. Before
 Apache reads it, `httpd -t` tests it: what it refuses is put back as it was, and Apache goes on with what
-it had. A setting that cannot be served is refused and said, never changed: the web GUI on a port chosen
-here (settled point 8a: how to move the GUI is said, and the plugin never moves it), no Core Rule Set,
-no address to listen on. A site that fails its checks (common.check_sites) is left out and named.
+it had. `httpd -t` parses; it does not bind or load a certificate. So the files before - the two and the
+certificates - are kept until Apache runs the new ones: a graceful restart Apache does not survive (a port
+another program holds) puts them back and starts Apache with them again; a start that fails puts them
+back and leaves Apache stopped, as it was. A setting that cannot be served is refused and said, never
+changed: the web GUI on a port chosen here (settled point 8a: how to move the GUI is said, and the plugin
+never moves it), no Core Rule Set, no address to listen on. A site that fails its checks
+(common.check_sites) is left out and named.
 
 Nothing here changes the firewall's rules: a site reached from another network needs a rule there that
 passes its port to this firewall, which the owner makes.
@@ -34,6 +38,7 @@ import os
 import re
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import time
@@ -61,10 +66,21 @@ MPMS = (('mpm_event_module', 'mod_mpm_event.so', 'event'), ('mpm_worker_module',
 RULE_BASE = 19000
 SITES_MAX = 899
 
-# How long Apache is given to come up after a start, and to show it is still there after a reload.
-START_WAIT = 8.0
-RELOAD_WAIT = 3.0
+# How long Apache is given to come up after a start, and to finish a graceful restart after a reload. Each
+# wait ends as soon as Apache shows it is done - its pid file written after it bound; its MPM's "resuming
+# normal operations" in its log after the mark - or that it is not: gone, or a fatal line in its log. The
+# Core Rule Set is parsed again at either; how long that takes on the XGS 136 is not measured yet.
+START_WAIT = 30.0
+RELOAD_WAIT = 30.0
 STEP = 0.25
+# A start or a graceful restart done: the MPM's notice (httpd.conf's LogLevel asks for the MPM's notices);
+# what says why Apache would not run; and what says it is ending now.
+RESUMED = re.compile(r'configured -- resuming normal operations')
+FATAL = re.compile(r':(emerg|alert|crit|error)\]')
+ENDING = re.compile(r':(emerg|alert)\]')
+# Old children of a graceful restart Apache did not survive may hold its ports a moment: waited for before
+# the configuration before is started again.
+GONE_WAIT = 10.0
 
 LOG_DAY = re.compile(r'(audit|error)_([0-9]{8})\.log\Z')
 KEEP_DAYS = 31
@@ -130,6 +146,14 @@ def mpm():
         if os.path.isfile(path):
             return {'name': name, 'path': path, 'kind': kind}
     return None
+
+
+def crs_folder():
+    """The Core Rule Set's own directory, crs/<version>, as crs/current points at it: Apache's configuration
+    names that, never current, so the configuration before - put back when Apache does not run a new one -
+    keeps the rules it ran with, whatever an install made current since (crs.py keeps every version a
+    configuration on disk names)."""
+    return os.path.realpath(paths()['crs'])
 
 
 def crs_installed():
@@ -263,7 +287,7 @@ def context(facts, sites):
         'listen': listen_lines(facts['where'], ports),
         'http_port': next((p for p, proto in ports if proto == 'http'), None),
         'https_port': next((p for p, proto in ports if proto == 'https'), None),
-        'default_cert': default_cert, 'sites': sites, 'crs': paths()['crs'], 'etc': common.ETC,
+        'default_cert': default_cert, 'sites': sites, 'crs': crs_folder(), 'etc': common.ETC,
         'run': common.RUN, 'logs': common.LOGS, 'work': common.WORK, 'pidfile': common.PIDFILE,
         'rotatelogs': common.ROTATELOGS, 'trust': common.TRUST,
     }
@@ -276,26 +300,25 @@ def configuration(facts, conf, certs):
     return ctx, {p['conf']: render('httpd.conf', ctx), p['msconf']: render('modsecurity.conf', ctx)}
 
 
-def export_certificates(root, usable, folder):
-    """Each certificate a site uses, written for Apache: <refid>.crt (it and its chain) and <refid>.key
-    (0600), in a directory only root reads. {refid: {crt, key}}; Refused('certificate') for one that
-    cannot be written. What else is there is taken away only once Apache took the new configuration
-    (tidy_certificates): the one it runs may still name it."""
-    os.makedirs(folder, mode=0o700, exist_ok=True)
-    os.chmod(folder, 0o700)
-    out = {}
+def certificate_files(root, usable, folder):
+    """Each certificate a site uses, as Apache is given it: ({refid: {crt, key}}, {path: (text, mode)}) -
+    <refid>.crt, it and its chain (0644), and <refid>.key (0600), in a directory only root reads (folders()).
+    Refused('certificate') for one System: Trust does not give with its key. Written with the two files
+    (put()), and put back with them; what else is there is taken away only once Apache runs the new
+    configuration (tidy_certificates): the one it runs may still name it."""
+    certs, files = {}, {}
     for site in usable:
         refid = site['certificate']
-        if not site['tls'] or refid in out:
+        if not site['tls'] or refid in certs:
             continue
         found = common.certificate(root, refid)
         if found is None:
             raise Refused('certificate', refid)
         where = cert_paths(folder, refid)
-        common.write_file(where['crt'], found['crt'], 0o644)
-        common.write_file(where['key'], found['key'], 0o600)
-        out[refid] = where
-    return out
+        files[where['crt']] = (found['crt'], 0o644)
+        files[where['key']] = (found['key'], 0o600)
+        certs[refid] = where
+    return certs, files
 
 
 def tidy_certificates(folder, certs):
@@ -323,6 +346,22 @@ def httpd_test(conf_path, run=subprocess.run):
     return done.returncode == 0, said[:600]
 
 
+def ours(pid):
+    """Whether pid is the plugin's Apache: alive, and httpd with this configuration."""
+    if not pid or pid <= 1:
+        return False
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    try:
+        args = subprocess.run(['ps', '-ww', '-o', 'args=', '-p', str(pid)], capture_output=True, text=True,
+                              timeout=10, check=False).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return 'httpd' in args and common.ETC + '/httpd.conf' in args
+
+
 def running_pid():
     """The pid of the plugin's Apache, from its pid file, when it is alive and is that Apache."""
     try:
@@ -330,18 +369,7 @@ def running_pid():
             pid = int(handle.read().split()[0])
     except (OSError, ValueError, IndexError):
         return None
-    if pid <= 1:
-        return None
-    try:
-        os.kill(pid, 0)
-    except OSError:
-        return None
-    try:
-        args = subprocess.run(['ps', '-ww', '-o', 'args=', '-p', str(pid)], capture_output=True, text=True,
-                              timeout=10, check=False).stdout
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    return pid if 'httpd' in args and common.ETC + '/httpd.conf' in args else None
+    return pid if ours(pid) else None
 
 
 def rc(action, run=subprocess.run):
@@ -353,60 +381,153 @@ def rc(action, run=subprocess.run):
         return 1, str(error)
 
 
-def last_errors(limit=3, today=None):
-    """The last lines of Apache's error log of today that say why it would not run."""
-    day = (today or datetime.date.today()).strftime('%Y%m%d')
+def error_log(day=None):
+    """Apache's error log of a day (rotatelogs -l: local time, as datetime's)."""
+    return os.path.join(common.LOGS, 'error_%s.log' % (day or datetime.date.today()).strftime('%Y%m%d'))
+
+
+def log_mark():
+    """Where Apache's error log ends now: what it writes after, log_since() reads."""
+    path = error_log()
     try:
-        with open(os.path.join(common.LOGS, 'error_%s.log' % day), encoding='utf-8', errors='replace') as handle:
-            lines = [line.strip() for line in handle.readlines()[-50:] if line.strip()]
+        return path, os.path.getsize(path)
     except OSError:
-        return ''
-    wanted = [line for line in lines if re.search(r':(emerg|alert|crit|error)\]|AH00[0-9]{3}', line)]
-    return ' '.join((wanted or lines)[-limit:])[:600]
+        return path, 0
 
 
-def wait_running(seconds, must_stay=False, sleep=time.sleep):
-    """After a start: the pid as soon as Apache is there, within seconds. After a reload (must_stay): the
-    pid if Apache is still there once they passed, else None."""
+def log_since(mark, limit=1 << 16):
+    """What Apache's error log gained since the mark - across midnight too, when the day's file changed."""
+    path, size = mark
+    parts = [(path, size)] + ([(error_log(), 0)] if error_log() != path else [])
+    out = ''
+    for name, start in parts:
+        try:
+            with open(name, 'rb') as handle:
+                handle.seek(start)
+                out += handle.read(limit).decode('utf-8', 'replace')
+        except OSError:
+            pass
+    return out
+
+
+def said_since(mark, limit=3):
+    """The lines of Apache's error log since the mark that say why it would not run."""
+    lines = [line.strip() for line in log_since(mark).splitlines() if line.strip()]
+    return ' '.join([line for line in lines if FATAL.search(line)][-limit:])[:600]
+
+
+def wait_started(mark, started, sleep=time.sleep):
+    """After a start: the pid as soon as Apache is there (it writes its pid file once it has bound); None when
+    the start command failed, when Apache's log since the mark says it is ending, or after START_WAIT."""
     waited = 0.0
-    while waited < seconds:
+    while True:
         pid = running_pid()
-        if pid and not must_stay:
+        if pid:
             return pid
-        if not pid and must_stay:
+        if not started or waited >= START_WAIT or ENDING.search(log_since(mark)):
             return None
         sleep(STEP)
         waited += STEP
-    return running_pid()
+
+
+def wait_reloaded(pid, mark, sleep=time.sleep):
+    """After a graceful restart of pid: pid as soon as its log since the mark says it runs the configuration
+    again ("resuming normal operations"); None as soon as it is gone; at RELOAD_WAIT with neither, pid -
+    still there, its restart said done by nothing."""
+    waited = 0.0
+    while True:
+        if not ours(pid):
+            return None
+        if RESUMED.search(log_since(mark)):
+            return pid
+        if waited >= RELOAD_WAIT:
+            return pid
+        sleep(STEP)
+        waited += STEP
+
+
+def wait_gone(run=subprocess.run, sleep=time.sleep):
+    """Until no process runs this configuration any more - the children a parent that ended leaves finish
+    their requests and go - or GONE_WAIT passed."""
+    waited = 0.0
+    while waited < GONE_WAIT:
+        try:
+            left = run(['pgrep', '-f', 'httpd -f ' + common.ETC + '/httpd.conf'], capture_output=True, text=True,
+                       timeout=10, check=False).returncode == 0
+        except (OSError, subprocess.TimeoutExpired):
+            return
+        if not left:
+            return
+        sleep(STEP)
+        waited += STEP
+
+
+def take(previous, run=subprocess.run, sleep=time.sleep):
+    """Apache given the files just written - reloaded where it runs, else started - and the files before
+    (previous, from put()) put back where it does not run them: (how it ended, what Apache said).
+    'reloaded', 'started'; 'restored': it did not survive the reload, and the files before, put back, run
+    again; 'stopped': it did not survive the reload, and the files before did not start either;
+    'notstarted': it did not start, the files before are put back and Apache is stopped, as it was - an
+    older configuration Apache was not running is never started in its place: it would publish what was
+    stopped since, sites taken away or the plugin turned off."""
+    pid = running_pid()
+    mark = log_mark()
+    if pid:
+        code, out = rc('reload', run)
+        if wait_reloaded(pid, mark, sleep):
+            return 'reloaded', ''
+        said = said_since(mark) or out
+        put_back(previous)
+        wait_gone(run, sleep)
+        mark = log_mark()
+        code, out = rc('start', run)
+        if wait_started(mark, code == 0, sleep):
+            return 'restored', said
+        return 'stopped', '%s; %s' % (said, said_since(mark) or out)
+    code, out = rc('start', run)
+    if wait_started(mark, code == 0, sleep):
+        return 'started', ''
+    said = said_since(mark) or out
+    rc('stop', run)
+    put_back(previous)
+    return 'notstarted', said
 
 
 def put(files):
-    """The configuration's files written; what each was before, to be put back."""
+    """The files written - {path: text} at 0644, or {path: (text, mode)} - and what each was before, to be
+    put back: {path: (bytes, mode) or None}. Where one cannot be written, those written are put back first."""
     previous = {}
-    for path, data in files.items():
-        previous[path] = None
-        if os.path.isfile(path):
-            with open(path, 'rb') as handle:
-                previous[path] = handle.read()
-        common.write_file(path, data, 0o644)
+    try:
+        for path, item in files.items():
+            data, mode = item if isinstance(item, tuple) else (item, 0o644)
+            previous[path] = None
+            if os.path.isfile(path):
+                with open(path, 'rb') as handle:
+                    previous[path] = (handle.read(), stat.S_IMODE(os.stat(path).st_mode))
+            common.write_file(path, data, mode)
+    except OSError:
+        put_back(previous)
+        raise
     return previous
 
 
 def put_back(previous):
-    for path, data in previous.items():
-        if data is None:
-            try:
-                os.unlink(path)
-            except OSError:
-                pass
-        else:
-            common.write_file(path, data, 0o644)
+    for path, item in previous.items():
+        try:
+            if item is None:
+                if os.path.lexists(path):
+                    os.unlink(path)
+            else:
+                common.write_file(path, item[0], item[1])
+        except OSError:
+            pass
 
 
 def folders():
-    """Apache's own directories: its runtime one (0755: its children open its locks there too), the logs'
-    (root's alone) and ModSecurity's work files' (www's: Apache's children write them)."""
-    for folder, mode in ((common.ETC, 0o755), (common.RUN, 0o755), (common.LOGS, 0o750),
+    """Apache's own directories: the certificates' (root's alone), its runtime one (0755: its children open
+    its locks there too), the logs' (root's alone) and ModSecurity's work files' (www's: Apache's children
+    write them)."""
+    for folder, mode in ((common.ETC, 0o755), (paths()['certs'], 0o700), (common.RUN, 0o755), (common.LOGS, 0o750),
                          (common.WORK, 0o750), (common.WORK + '/tmp', 0o750), (common.WORK + '/data', 0o750)):
         os.makedirs(folder, exist_ok=True)
         os.chmod(folder, mode)
@@ -437,7 +558,17 @@ def apply(config=None, run=subprocess.run, sleep=time.sleep, listen_found=None):
         except OSError:
             return {'status': 'failed', 'code': 'busy', 'detail': '',
                     'message': 'another Apply or a Core Rule Set install is running'}
-        return keep(_apply(config, run, sleep, listen_found))
+        return applied(config, run, sleep, listen_found)
+
+
+def applied(config=None, run=subprocess.run, sleep=time.sleep, listen_found=None):
+    """An Apply under the lock its caller holds (apply(), crs.py's install), kept for the page. Where it
+    leaves Apache running what it ran, the addresses said are those that run: the last Apply's."""
+    before = common.read_json(paths()['apply'])
+    result = _apply(config, run, sleep, listen_found)
+    if result.get('status') == 'failed' and result.get('state') != 'stopped' and result.get('code') != 'busy':
+        result['listen'] = before.get('listen', []) if isinstance(before.get('listen'), list) else []
+    return keep(result)
 
 
 def _apply(config, run, sleep, listen_found):
@@ -455,7 +586,7 @@ def _apply(config, run, sleep, listen_found):
                 'sites': 0, 'skipped': [], 'listen': []}
     try:
         facts = plan(root, conf, common.sites(root), listen_found, run)
-        certs = export_certificates(root, facts['usable'], p['certs'])
+        certs, cert_files = certificate_files(root, facts['usable'], p['certs'])
         ctx, files = configuration(facts, conf, certs)
     except Refused as refused:
         result = {'status': 'failed', 'code': refused.code, 'detail': refused.detail, 'listen': [],
@@ -476,7 +607,7 @@ def _apply(config, run, sleep, listen_found):
 
     try:
         folders()
-        previous = put(files)
+        previous = put(dict(cert_files, **files))
     except OSError as error:
         return {'status': 'failed', 'code': 'write', 'detail': str(error), 'sites': 0, 'skipped': [],
                 'message': 'the configuration could not be written (%s); Apache was left as it was' % error}
@@ -487,22 +618,22 @@ def _apply(config, run, sleep, listen_found):
         put_back(previous)
         return dict(base, status='failed', code='config', detail=said, message='Apache refused the '
                     'configuration (%s); the one before is kept, and Apache was left as it was' % said)
-    tidy_certificates(p['certs'], certs)
     count = '%d site%s' % (len(facts['usable']), '' if len(facts['usable']) == 1 else 's')
-    if running_pid():
-        code, out = rc('reload', run)
-        if wait_running(RELOAD_WAIT, must_stay=True, sleep=sleep):
-            return dict(base, status='ok', state='running', code='', detail='',
-                        message='Apache reloaded with ' + count)
-        said = last_errors() or out
-        return dict(base, status='failed', state='stopped', code='start', detail=said,
-                    message='Apache stopped after the reload: ' + said)
-    code, out = rc('start', run)
-    if wait_running(START_WAIT, sleep=sleep):
-        return dict(base, status='ok', state='running', code='', detail='', message='Apache started with ' + count)
-    said = last_errors() or out
-    return dict(base, status='failed', state='stopped', code='start', detail=said,
-                message='Apache did not start: ' + said)
+    ended, said = take(previous, run, sleep)
+    if ended in ('reloaded', 'started'):
+        tidy_certificates(p['certs'], certs)
+        return dict(base, status='ok', state='running', code='', detail='',
+                    message='Apache %s with %s' % (ended, count))
+    if ended == 'restored':
+        return dict(base, status='failed', state='running', code='restored', detail=said,
+                    message='Apache could not run the new configuration (%s); the one before runs again' % said)
+    if ended == 'stopped':
+        return dict(base, status='failed', state='stopped', code='start', detail=said, listen=[],
+                    message='Apache stopped after the reload, and the configuration before did not start '
+                    'again: ' + said)
+    return dict(base, status='failed', state='stopped', code='start', detail=said, listen=[],
+                message='Apache did not start (%s); the configuration before is kept, and Apache is stopped, '
+                'as it was' % said)
 
 
 def preserve(root):
@@ -547,8 +678,7 @@ def main(argv):
             root = common.read_root()
             conf = common.general(root)
             facts = plan(root, conf, common.sites(root))
-            certs = {s['certificate']: cert_paths(paths()['certs'], s['certificate'])
-                     for s in facts['usable'] if s['tls']}
+            certs = certificate_files(root, facts['usable'], paths()['certs'])[0]
             files = configuration(facts, conf, certs)[1]
         except Refused as refused:
             print(json.dumps({'status': 'failed', 'code': refused.code, 'detail': refused.detail}))

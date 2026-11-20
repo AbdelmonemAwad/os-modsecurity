@@ -92,6 +92,7 @@
             'module': "{{ lang._('Apache has no module the configuration needs:') }}",
             'certificate': "{{ lang._('A site\'s certificate is not in System: Trust with its private key:') }}",
             'config': "{{ lang._('Apache refused the configuration, and runs the one before:') }}",
+            'restored': "{{ lang._('Apache could not run the new configuration, and runs the one before again:') }}",
             'start': "{{ lang._('Apache did not run:') }}"
         };
 

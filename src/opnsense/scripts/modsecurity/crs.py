@@ -37,7 +37,9 @@ WHAT AN INSTALL IS. The archive unpacked - its one top directory coreruleset-<ve
 directories only - into /usr/local/etc/os-modsecurity/crs/<version>; its crs-setup.conf.example copied to
 crs-setup.conf, as the Core Rule Set's install says; Apache's test (httpd -t) of a configuration that
 holds it; then crs/current pointed at it. A version Apache refuses is not used. The one before stays
-until the next install. Where the plugin is on, Apply then takes the new one (setup.py).
+until the next install, and so does every version Apache's configuration on disk names: it names
+crs/<version>, not crs/current, so the one Apache runs keeps its rules. Where the plugin is on, Apply then
+takes the new one (setup.py).
 
 A test firewall may read the releases from another place, named in the one-line file
 /usr/local/share/os-modsecurity/crs-from (a URL, file:// too): what is installed must still be signed with
@@ -348,10 +350,21 @@ def installed():
     return found
 
 
+def in_use():
+    """The versions Apache's configuration on disk names (crs/<version>/, setup.crs_folder()): never taken
+    away, so the one Apache runs, and the one an Apply puts back, keep their rules."""
+    try:
+        with open(common.ETC + '/httpd.conf', encoding='utf-8', errors='replace') as handle:
+            text = handle.read()
+    except OSError:
+        return set()
+    return set(re.findall(re.escape(common.CRS) + r'/(4\.[0-9]{1,3}\.[0-9]{1,4})/', text))
+
+
 def activate(version, rules, record, run=subprocess.run):
     """The unpacked version in crs/<version>.new made crs/<version>, tested, and pointed at by
-    crs/current; the one before kept, any older one taken away. The record written; Unusable when
-    Apache refuses it - then nothing in use changed."""
+    crs/current; the one before kept, and every one a configuration on disk names, any older one taken
+    away. The record written; Unusable when Apache refuses it - then nothing in use changed."""
     staged = os.path.join(common.CRS, version + '.new')
     passed, said = httpd_check(staged, run)
     if passed is False:
@@ -372,9 +385,11 @@ def activate(version, rules, record, run=subprocess.run):
                    'tested': passed is True, 'tested_said': said if passed is not True else '',
                    'previous': before if before != version else record.get('previous', '')})
     common.write_json(state_path(), record, 0o644)
+    named = in_use()
     for name in os.listdir(common.CRS):
         path = os.path.join(common.CRS, name)
-        if name in (version, before, 'current', 'installed.json') or not os.path.isdir(path) or os.path.islink(path):
+        if name in (version, before, 'current', 'installed.json') or name in named or not os.path.isdir(path) or \
+                os.path.islink(path):
             continue
         if re.fullmatch(r'4\.[0-9.]+(\.new)?', name) or name.startswith('.old-'):
             shutil.rmtree(path, ignore_errors=True)
@@ -404,7 +419,7 @@ def then_apply(result, run=subprocess.run):
     except (OSError, ValueError):
         on = False
     if on:
-        result['apply'] = setup.keep(setup._apply(None, run, time.sleep, None))
+        result['apply'] = setup.applied(None, run, time.sleep, None)
     return result
 
 

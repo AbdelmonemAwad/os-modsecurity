@@ -9,7 +9,8 @@ What is checked: the newest release of the 4.25 line among the tags; a manifest 
 signature verifies with a key the firewall holds and every field is a Core Rule Set release of this
 repository checked against the pinned key; the archive taken only when it is the one signed; what an archive
 may hold (its one top directory, files and directories, enough rule files); the install - unpacked, its
-setup copied, Apache's test, crs/current pointed at it, the one before kept, an older one taken away - and
+setup copied, Apache's test, crs/current pointed at it, the one before kept and each one a configuration on
+disk names, an older one taken away - and
 nothing in use changed when any of it fails; an archive given by hand, taken only with its SHA-256; Apply
 after an install where the plugin is on; one install or Apply at a time; and what check says.
 
@@ -273,6 +274,11 @@ publish('4.25.4')
 crs.install()
 check('the next one: the one before kept, the older one taken away', [current(), versions()],
       ['4.25.4', ['4.25.3', '4.25.4']])
+# Apache's configuration on disk names its rules by their version (setup.crs_folder()): that one stays
+os.makedirs(common.ETC, exist_ok=True)
+with open(common.ETC + '/httpd.conf', 'w') as handle:
+    handle.write('Include "%s/4.25.3/crs-setup.conf"\nInclude "%s/4.25.3/rules/*.conf"\n' % (common.CRS, common.CRS))
+check('the versions a configuration on disk names', crs.in_use(), {'4.25.3'})
 
 fake_httpd(1, 'AH00526: Syntax error on line 4 of crs-setup.conf')
 publish('4.25.5')
@@ -324,6 +330,8 @@ check('by hand, no SHA-256: refused', got['status'], 'failed')
 got = crs.install_archive(path, hashlib.sha256(data).hexdigest().upper())
 check('by hand, its SHA-256: installed, said by hand', [got['status'], current(), crs.installed()['source'],
                                                         crs.installed()['signed_with']], ['installed', '4.25.8', 'hand', ''])
+check('the version Apache\'s configuration on disk names kept beside the one before, though older',
+      versions(), ['4.25.3', '4.25.4', '4.25.8'])
 
 # --- Apply after an install, and one at a time -------------------------------------------------------------
 
@@ -337,6 +345,7 @@ check('the plugin on: Apply takes the new release, its answer with the install\'
                                                                                      got['apply']['state']],
       ['installed', 1, 'running'])
 check('Apply\'s answer kept for the page', common.read_json(common.STATE + '/apply.json')['state'], 'running')
+os.unlink(common.ETC + '/httpd.conf')
 os.makedirs(common.STATE, exist_ok=True)
 holder = open(common.STATE + '/apply.lock', 'w')
 __import__('fcntl').flock(holder, __import__('fcntl').LOCK_EX)

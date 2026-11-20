@@ -4,7 +4,7 @@
 """The Web Application Firewall's Apply and status, run against config.xml as OPNsense 26.7 writes it
 (tools/fixtures/config.xml), with its certificates and keys made here by OpenSSL at each run, every path
 moved into a temporary directory, and stand-ins for what only a firewall has: Apache (httpd -t, its pid),
-the rc script, PHP's interfaces_addresses() for listen.php.
+the rc script, Apache's error log, PHP's interfaces_addresses() for listen.php.
 
 What is checked: a site's host names, wildcards and backend read as the model reads them (one table with
 tools/test-model.php: tools/fixtures/cases.json), and the web GUI's listeners and where they meet the
@@ -14,7 +14,9 @@ the configuration rendered from the templates - its listeners, the catch-all vir
 mode, paranoia rule, redirect to HTTPS, backend over HTTPS checked or not, the JSON audit log - and nothing
 of config.xml in it that is not checked; Apply's way: off - Apache stopped; refused - Apache left as it
 was and why said, by a code the page translates; tested by Apache, and put back when Apache refuses it;
-started or reloaded, and said when Apache would not run; the log files pruned after OPNsense's days;
+started or reloaded - a reload waited for until Apache's log says it is done - and, when Apache does not run
+it, the files before put back with the certificates they name: run again after a reload Apache did not
+survive, left stopped after a start that failed; the log files pruned after OPNsense's days;
 listen.php's addresses; and the page's status in each of its states.
 
     python3 tools/test-setup.py"""
@@ -288,7 +290,9 @@ packages()
 crs()
 WHERE = [{'address': '203.0.113.1', 'family': 4}, {'address': '2001:db8::1', 'family': 6}]
 facts = setup.plan(root, conf, entries, WHERE)
-certs = setup.export_certificates(root, facts['usable'], setup.paths()['certs'])
+certs, cert_files = setup.certificate_files(root, facts['usable'], setup.paths()['certs'])
+setup.folders()
+setup.put(cert_files)
 ctx, files = setup.configuration(facts, conf, certs)
 httpd = files[setup.paths()['conf']]
 msconf = files[setup.paths()['msconf']]
@@ -329,6 +333,10 @@ check('a reverse proxy only, never a forward one', 'ProxyRequests Off' in lines,
 check('its own pid file and runtime directory, never the package\'s', ['PidFile "%s"' % common.PIDFILE in lines,
                                                                       'DefaultRuntimeDir "%s"' % common.RUN in lines],
       [True, True])
+check('the Core Rule Set by its own directory, crs/<version>, never crs/current: a configuration put back keeps its rules',
+      'Include "%s/4.25.2/crs-setup.conf"' % os.path.realpath(common.CRS) in lines, True)
+check('Apache\'s warnings and its MPM\'s notices, which say when a start or a graceful restart is done',
+      'LogLevel warn mpm_event:notice' in lines, True)
 check('the Core Rule Set after ModSecurity\'s settings, and each site\'s paranoia rule between its setup and its rules',
       [line.split()[0] + ' ' + line.split()[1].rsplit('/', 2)[-1] for line in lines
        if line.startswith(('Include ', 'SecRule SERVER_NAME', 'IncludeOptional'))],
@@ -436,18 +444,42 @@ def fake_running():
     return alive['pid']
 
 
+def fake_ours(pid):
+    return pid is not None and alive['pid'] == pid
+
+
+def log_line(text):
+    """A line of Apache's error log of today, as Apache writes one."""
+    with open(setup.error_log(), 'a', encoding='utf-8') as handle:
+        handle.write('[Fri Nov 20 12:00:00.000000 2026] %s\n' % text)
+
+
+RESUMED = '[mpm_event:notice] [pid 4242:tid 1] AH00489: Apache/2.4.70 (FreeBSD) configured -- resuming normal operations'
+NOBIND = ('[core:emerg] [pid 4242:tid 1] (48)Address already in use: AH00072: make_sock: could not bind to address '
+          '203.0.113.1:443')
+
+
 def fake_run(args, **kwargs):
     done = run(args, **kwargs)
     if args[0] == common.RC and args[1] == 'onestart':
         alive['pid'] = alive['after_start']
-    if args[0] == common.RC and args[1] == 'onereload' and alive['after_reload'] != 'same':
-        alive['pid'] = alive['after_reload']
+        if alive['pid'] is None:
+            log_line(NOBIND)
+    if args[0] == common.RC and args[1] == 'onereload':
+        if alive['after_reload'] == 'same':
+            log_line(RESUMED)
+        else:
+            alive['pid'] = alive['after_reload']
+            log_line(NOBIND)
+            log_line('[mpm_event:alert] [pid 4242:tid 1] no listening sockets available, shutting down')
     if args[0] == common.RC and args[1] == 'onestop':
         alive['pid'] = None
     return done
 
 
 setup.running_pid = fake_running
+setup.ours = fake_ours
+answers['pgrep -f'] = Done(1)
 
 
 def apply(change=None, where=WHERE, start=4242, reload='same', pid=None):
@@ -531,16 +563,95 @@ check('the directories made: ModSecurity\'s work files, the logs root\'s alone',
 got = apply(pid=4242)
 check('Apache running: reloaded, not started again', [got['state'], rc_calls(), got['message']],
       ['running', ['onereload'], 'Apache reloaded with 2 sites'])
-write(os.path.join(common.LOGS, 'error_%s.log' % datetime.date.today().strftime('%Y%m%d')),
-      '[x] [core:notice] AH00094: Command line\n[x] [core:emerg] (48)Address already in use: AH00072: make_sock: could '
-      'not bind to address 203.0.113.1:443\n')
-got = apply(pid=4242, reload=None)
-check('Apache gone after the reload: said, with what its log says', [got['status'], got['code'], 'AH00072' in got['detail']],
-      ['failed', 'start', True])
+
+# a reload Apache does not survive: the files before, and their certificates, put back and run again
+CONF, MSCONF, CERTS = setup.paths()['conf'], setup.paths()['msconf'], setup.paths()['certs']
+running = {path: open(path, 'rb').read() for path in (CONF, MSCONF)}
+crt = os.path.join(CERTS, '6a1b2c3d4e5f6.crt')
+write(crt, '-----BEGIN CERTIFICATE-----\nthe one Apache runs\n-----END CERTIFICATE-----\n')
+write(os.path.join(CERTS, 'old.crt'), 'a certificate the running configuration names')
+write(CONF, running[CONF].decode() + '# the configuration Apache runs\n')
+running[CONF] = open(CONF, 'rb').read()
+common.write_json(setup.paths()['apply'], {'status': 'ok', 'state': 'running', 'listen': ['203.0.113.1:80'], 'at': 1})
+got = apply(pid=4242, reload=None, start=4243)
+check('Apache gone after the reload: the configuration before put back and started again, said with Apache\'s words',
+      [got['status'], got['state'], got['code'], rc_calls(), 'AH00072' in got['detail']],
+      ['failed', 'running', 'restored', ['onereload', 'onestart'], True])
+check('the two files Apache ran, back as they were', [open(CONF, 'rb').read() == running[CONF],
+                                                      open(MSCONF, 'rb').read() == running[MSCONF]], [True, True])
+check('the certificates the configuration before names, back as they were and none taken away',
+      [open(crt).read().split('\n')[1], os.path.exists(os.path.join(CERTS, 'old.crt')),
+       oct(os.stat(crt).st_mode & 0o777)], ['the one Apache runs', True, '0o644'])
+check('where Apache listens, said as the configuration before has it', got['listen'], ['203.0.113.1:80'])
+check('said so on the page: the one before runs again', got['message'].endswith('the one before runs again'), True)
+got = apply(pid=4242, reload=None, start=None)
+check('Apache gone after the reload, and the configuration before not started either: stopped, both said',
+      [got['state'], got['code'], rc_calls(), got['detail'].count('AH00072'), got['listen']],
+      ['stopped', 'start', ['onereload', 'onestart'], 2, []])
+check('the files before put back all the same', open(CONF, 'rb').read() == running[CONF], True)
+
+# a start that fails: the files before put back, Apache left stopped as it was - nothing older started
 got = apply(start=None)
-check('Apache not there after the start: said, with its log', [got['status'], got['state'], got['code'],
-                                                              'Address already in use' in got['message']],
-      ['failed', 'stopped', 'start', True])
+check('Apache not there after the start: said with its log, the files before put back, nothing else started',
+      [got['status'], got['state'], got['code'], 'Address already in use' in got['message'], rc_calls(),
+       open(CONF, 'rb').read() == running[CONF], os.path.exists(os.path.join(CERTS, 'old.crt'))],
+      ['failed', 'stopped', 'start', True, ['onestart', 'onestop'], True, True])
+alive.update(pid=None, after_start=None)
+slept = []
+check('the start command failing: not waited for', [setup.wait_started(setup.log_mark(), False, sleep=slept.append),
+                                                    len(slept)], [None, 0])
+mark = setup.log_mark()
+log_line('[ssl:emerg] [pid 1:tid 1] AH02312: Fatal error initialising mod_ssl, exiting.')
+check('Apache\'s log saying it ends: the start not waited for longer', [setup.wait_started(mark, True, sleep=slept.append),
+                                                                        len(slept)], [None, 0])
+check('without either, the start waited for as long as START_WAIT', [setup.wait_started(setup.log_mark(), True,
+                                                                                         sleep=slept.append),
+                                                                      len(slept) == int(setup.START_WAIT / setup.STEP)],
+      [None, True])
+
+# the reload waited for until Apache's own log says it is done, never by a fixed time
+alive['pid'] = 4242
+del slept[:]
+log_line(RESUMED)
+mark = setup.log_mark()
+
+
+def resume_later(seconds):
+    slept.append(seconds)
+    if len(slept) == 3:
+        log_line(RESUMED)
+
+
+check('a graceful restart: done once Apache\'s log since the mark says so, not by its line before',
+      [setup.wait_reloaded(4242, mark, sleep=resume_later), len(slept)], [4242, 3])
+del slept[:]
+check('no word in its log, Apache still there: waited for as long as RELOAD_WAIT, then taken as running',
+      [setup.wait_reloaded(4242, setup.log_mark(), sleep=slept.append), len(slept) == int(setup.RELOAD_WAIT / setup.STEP)],
+      [4242, True])
+check('Apache gone: said at once', setup.wait_reloaded(4241, setup.log_mark(), sleep=slept.append), None)
+yesterday = datetime.date.today() - datetime.timedelta(days=1)
+write(setup.error_log(yesterday), 'one\n')
+check('the log read across midnight: the rest of the day before, then today\'s',
+      setup.log_since((setup.error_log(yesterday), 0)).split('\n')[0], 'one')
+os.unlink(setup.error_log(yesterday))
+check('what says why Apache would not run: its fatal lines alone, not the notices', setup.said_since(mark),
+      '')
+mark = setup.log_mark()
+log_line(RESUMED)
+log_line(NOBIND)
+check('its fatal lines since the mark', setup.said_since(mark).endswith('could not bind to address 203.0.113.1:443'), True)
+
+# the files put and put back with their modes, and a file that was not there taken away again
+spot = os.path.join(TOP, 'put')
+write(os.path.join(spot, 'a'), 'before', 0o600)
+before = setup.put({os.path.join(spot, 'a'): ('after', 0o644), os.path.join(spot, 'b'): 'new'})
+check('put: the files written, what they were kept', [open(os.path.join(spot, 'a')).read(), before[os.path.join(spot, 'b')]],
+      ['after', None])
+setup.put_back(before)
+check('put back: the file as it was, its mode too, and the new one gone', [open(os.path.join(spot, 'a')).read(),
+                                                                          oct(os.stat(os.path.join(spot, 'a')).st_mode & 0o777),
+                                                                          os.path.exists(os.path.join(spot, 'b'))],
+      ['before', '0o600', False])
 
 # one Apply at a time
 os.makedirs(common.STATE, exist_ok=True)

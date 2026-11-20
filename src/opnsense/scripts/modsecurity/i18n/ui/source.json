@@ -14,6 +14,7 @@
  "Add one in Sites, then Apply",
  "Allow access to the Web Application Firewall: the sites it publishes, how each is inspected, and its settings",
  "An independent project, not affiliated with Deciso B.V.",
+ "Apache could not run the new configuration, and runs the one before again:",
  "Apache did not run:",
  "Apache has no module the configuration needs:",
  "Apache refused the configuration, and runs the one before:",
