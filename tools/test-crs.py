@@ -211,6 +211,9 @@ check('a manifest signed with a key this firewall holds: taken, the key named', 
       ['4.25.2', 'xgs-release-key-test.pub'])
 
 
+codes = []
+
+
 def refused(why, version='4.25.2', **kwargs):
     unpublish()
     publish(version, **kwargs)
@@ -219,6 +222,7 @@ def refused(why, version='4.25.2', **kwargs):
         check('refused: ' + why, 'taken', 'refused')
     except crs.Unsigned as reason:
         check('refused: ' + why, True, True)
+        codes.append((reason.code, reason.detail))
         return str(reason)
 
 
@@ -239,6 +243,20 @@ trust()
 said = refused('a firewall that holds no key')
 check('said as such', "this firewall's release keys - it has none" in said, True)
 trust('test')
+check('each refusal by a code the page says in its own language, its variable part apart', codes, [
+    ('badsig', 'crs-4.25.2'), ('unsigned', 'crs-4.25.2: crs.json.sig'), ('unsigned', 'crs-4.25.2: crs.json'),
+    ('manifest', 'crs-4.25.2: crs-4.25.1, 4.25.2, coreruleset-4.25.2-minimal.tar.gz'),
+    ('manifest', 'crs-4.25.2: crs-4.25.2, 4.25.1, coreruleset-4.25.2-minimal.tar.gz'), ('manifest', 'crs-4.25.2: repository'),
+    ('manifest', 'crs-4.25.2: upstream_key'), ('manifest', 'crs-4.25.2: format'), ('manifest', 'crs-4.25.2: archive'),
+    ('manifest', 'crs-4.25.2: size'), ('manifest', 'crs-4.25.2: size'), ('nokeys', 'crs-4.25.2')])
+unpublish()
+got = crs.install()
+check('no release of the line: said by its code, with the line', [got['status'], got['code'], got['line']],
+      ['failed', 'none', '4.25'])
+publish('4.25.2', drop=('crs.json.sig',))
+got = crs.install()
+check('the newest not signed yet: its code and its tag, nothing installed', [got['code'], got['detail'], current()],
+      ['unsigned', 'crs-4.25.2: crs.json.sig', None])
 
 # --- an install --------------------------------------------------------------------------------------------
 
@@ -286,6 +304,8 @@ got = crs.install()
 check('a release Apache refuses: not used, said with its words', [got['status'], current(), 'AH00526' in got['message'],
                                                                   versions()],
       ['failed', '4.25.4', True, ['4.25.3', '4.25.4']])
+check('said by its code, Apache\'s words after it', [got['code'], got['detail']],
+      ['refused', 'AH00526: Syntax error on line 4 of crs-setup.conf'])
 fake_httpd()
 unpublish()
 
@@ -295,6 +315,8 @@ got = crs.install()
 check('an archive that is not the one signed: not installed, said, nothing in use changed',
       [got['status'], 'is not the one signed' in got['message'], current(), versions()],
       ['failed', True, '4.25.4', ['4.25.3', '4.25.4']])
+check('said by its code, its tag and sizes after it', [got['code'], got['detail'].startswith('crs-4.25.6: ')],
+      ['mismatch', True])
 unpublish()
 
 
@@ -305,6 +327,7 @@ def refused_archive(why, data, version='4.25.7'):
     check('an archive refused, %s: nothing in use changed, nothing left of it' % why,
           [got['status'], current(), versions(), [n for n in os.listdir(common.CRS) if n.startswith('.') or n.endswith('.new')]],
           ['failed', '4.25.4', ['4.25.3', '4.25.4'], []])
+    check('said by its code: archive', got['code'], 'archive')
     return got['message']
 
 
@@ -324,9 +347,10 @@ data = archive('4.25.8')
 with open(path, 'wb') as handle:
     handle.write(data)
 got = crs.install_archive(path, '0' * 64)
-check('by hand, another SHA-256 than the archive\'s: refused', [got['status'], current()], ['failed', '4.25.4'])
+check('by hand, another SHA-256 than the archive\'s: refused', [got['status'], got['code'], current()],
+      ['failed', 'mismatch', '4.25.4'])
 got = crs.install_archive(path, 'x')
-check('by hand, no SHA-256: refused', got['status'], 'failed')
+check('by hand, no SHA-256: refused', [got['status'], got['code']], ['failed', 'sha256'])
 got = crs.install_archive(path, hashlib.sha256(data).hexdigest().upper())
 check('by hand, its SHA-256: installed, said by hand', [got['status'], current(), crs.installed()['source'],
                                                         crs.installed()['signed_with']], ['installed', '4.25.8', 'hand', ''])
@@ -350,8 +374,8 @@ os.makedirs(common.STATE, exist_ok=True)
 holder = open(common.STATE + '/apply.lock', 'w')
 __import__('fcntl').flock(holder, __import__('fcntl').LOCK_EX)
 got = crs.install()
-check('an Apply or an install running: this one says so and changes nothing', [got['status'], current()],
-      ['failed', '4.25.9'])
+check('an Apply or an install running: this one says so and changes nothing', [got['status'], got['code'], current()],
+      ['failed', 'busy', '4.25.9'])
 holder.close()
 
 # --- check -------------------------------------------------------------------------------------------------
@@ -364,7 +388,7 @@ check('check: a newer one signed, available; nothing downloaded or changed', [go
 publish('4.25.12', key='other')
 check('check: the newest not signed with a key held - said', crs.check()['status'], 'unsigned')
 unpublish()
-check('check: no release of the line', crs.check()['status'], 'none')
+check('check: no release of the line', [crs.check()['status'], crs.check()['code']], ['none', 'none'])
 check('status: what is installed', crs.installed()['version'], '4.25.9')
 
 shutil.rmtree(TOP, ignore_errors=True)

@@ -92,13 +92,33 @@ FIELDS = {
 }
 
 
-class Unsigned(Exception):
+class Refusal(Exception):
+    """What stops an install: a code the page says in its own language (index.volt), the variable part it
+    says after - a release's tag, a field's name, a file in an archive, Apache's or the system's own words -
+    and the whole of it in English, for a shell and for the logs."""
+
+    def __init__(self, code, message, detail=''):
+        super().__init__(message)
+        self.code = code
+        self.detail = detail
+
+
+class Unsigned(Refusal):
     """A release not taken: no manifest, a signature that does not verify, or a manifest that is not
-    of a Core Rule Set release of this repository - the reason, said as it is."""
+    of a Core Rule Set release of this repository."""
 
 
-class Unusable(Exception):
-    """An archive that is not one to install: the reason."""
+class Unusable(Refusal):
+    """An archive that is not one to install."""
+
+
+def refused(code, message, detail='', **more):
+    """An install's answer when it took nothing: {'status': 'failed', 'code', 'detail', 'message', ...}."""
+    return dict({'status': 'failed', 'code': code, 'detail': detail, 'message': message}, **more)
+
+
+def refusal(reason, **more):
+    return refused(reason.code, str(reason), reason.detail, **more)
 
 
 def state_path():
@@ -133,7 +153,8 @@ def fetch(url, limit):
     with response:
         data = response.read(limit + 1)
     if len(data) > limit:
-        raise Unsigned('%s is larger than a file of its kind can be' % url.rsplit('/', 1)[-1])
+        raise Unsigned('manifest', '%s is larger than a file of its kind can be' % url.rsplit('/', 1)[-1],
+                       url.rsplit('/', 1)[-1])
     return data
 
 
@@ -216,28 +237,34 @@ def signed_manifest(tag):
         signature = fetch(release_url(tag, MANIFEST + '.sig'), 64)
     except urllib.error.HTTPError as error:
         if error.code == 404:
-            raise Unsigned('%s is not signed yet: it has no %s' % (tag, missing)) from error
+            raise Unsigned('unsigned', '%s is not signed yet: it has no %s' % (tag, missing),
+                           '%s: %s' % (tag, missing)) from error
         raise
     name = signature_key(data, signature)
     if not name:
-        raise Unsigned('the signature of %s does not verify with %s' % (
-            tag, 'any release key of this firewall' if glob.glob(os.path.join(KEYS, '*.pub'))
-            else "this firewall's release keys - it has none"))
+        if not glob.glob(os.path.join(KEYS, '*.pub')):
+            raise Unsigned('nokeys', "the signature of %s does not verify with this firewall's release keys - it "
+                           'has none' % tag, tag)
+        raise Unsigned('badsig', 'the signature of %s does not verify with any release key of this firewall' % tag, tag)
     try:
         found = json.loads(data.decode('utf-8'))
     except ValueError as error:
-        raise Unsigned('the manifest of %s, signed, is not JSON' % tag) from error
+        raise Unsigned('manifest', 'the manifest of %s, signed, is not JSON' % tag, tag) from error
     if not isinstance(found, dict) or found.get('format') != 1:
-        raise Unsigned('the manifest of %s is of a format this crs.py does not read' % tag)
+        raise Unsigned('manifest', 'the manifest of %s is of a format this crs.py does not read' % tag,
+                       '%s: format' % tag)
     for field, pattern in FIELDS.items():
         if not isinstance(found.get(field), str) or not pattern.match(found[field]):
-            raise Unsigned('the manifest of %s has no %s, or not one of the form it must have' % (tag, field))
+            raise Unsigned('manifest', 'the manifest of %s has no %s, or not one of the form it must have' % (tag, field),
+                           '%s: %s' % (tag, field))
     if found['tag'] != tag or found['tag'] != 'crs-' + found['version'] or \
             found['archive'] != 'coreruleset-%s-minimal.tar.gz' % found['version']:
-        raise Unsigned('the manifest of %s names another release: %s' % (tag, found['tag']))
+        raise Unsigned('manifest', 'the manifest of %s names another release: %s' % (tag, found['tag']),
+                       '%s: %s, %s, %s' % (tag, found['tag'], found['version'], found['archive']))
     size = found.get('size')
     if not isinstance(size, int) or isinstance(size, bool) or not 0 < size <= ARCHIVE_MAX:
-        raise Unsigned('the manifest of %s has no size, or one no archive of it can have' % tag)
+        raise Unsigned('manifest', 'the manifest of %s has no size, or one no archive of it can have' % tag,
+                       '%s: size' % tag)
     found['key'] = name
     return found
 
@@ -258,10 +285,13 @@ def download(manifest, path):
             digest.update(chunk)
             handle.write(chunk)
     if size != manifest['size'] or digest.hexdigest() != manifest['sha256']:
-        raise Unusable('the archive of %s is not the one signed: %s bytes where %d were signed%s' % (
+        raise Unusable('mismatch', 'the archive of %s is not the one signed: %s bytes where %d were signed%s' % (
             manifest['tag'], 'more than %d' % manifest['size'] if size > manifest['size'] else size,
             manifest['size'], '' if size > manifest['size'] else ', SHA-256 %s where %s was' % (
-                digest.hexdigest()[:16], manifest['sha256'][:16])))
+                digest.hexdigest()[:16], manifest['sha256'][:16])),
+            '%s: %s > %d' % (manifest['tag'], size, manifest['size']) if size > manifest['size'] else
+            '%s: %d / %d, SHA-256 %s / %s' % (manifest['tag'], size, manifest['size'], digest.hexdigest()[:16],
+                                             manifest['sha256'][:16]))
 
 
 def sha256_of(path):
@@ -279,22 +309,23 @@ def unpack(archive, folder, version=None):
     try:
         tar = tarfile.open(archive, 'r:gz')
     except (OSError, tarfile.TarError) as error:
-        raise Unusable('the archive cannot be read: %s' % error) from error
+        raise Unusable('archive', 'the archive cannot be read: %s' % error, str(error)) from error
     with tar:
         members = tar.getmembers()
         if not members or len(members) > MEMBERS_MAX:
-            raise Unusable('the archive holds %d entries' % len(members))
+            raise Unusable('archive', 'the archive holds %d entries' % len(members), '%d / %d' % (len(members), MEMBERS_MAX))
         top = members[0].name.strip('/').split('/')[0]
         found = re.fullmatch(r'coreruleset-(4\.[0-9]{1,3}\.[0-9]{1,4})', top)
         if not found or (version and found.group(1) != version):
-            raise Unusable('the archive is not coreruleset-%s: its top directory is %s' % (version or '<version>', top))
+            raise Unusable('archive', 'the archive is not coreruleset-%s: its top directory is %s' % (version or '<version>', top),
+                           top)
         total = 0
         os.makedirs(folder, mode=0o755)
         for member in members:
             name = member.name.strip('/')
             parts = name.split('/')
             if parts[0] != top or '..' in parts or '' in parts or name.startswith('/'):
-                raise Unusable('the archive holds %s, outside %s/' % (member.name, top))
+                raise Unusable('archive', 'the archive holds %s, outside %s/' % (member.name, top), member.name)
             inside = parts[1:]
             if not inside:
                 continue
@@ -303,10 +334,11 @@ def unpack(archive, folder, version=None):
                 os.makedirs(target, mode=0o755, exist_ok=True)
                 continue
             if not member.isfile():
-                raise Unusable('the archive holds %s, which is no file' % member.name)
+                raise Unusable('archive', 'the archive holds %s, which is no file' % member.name, member.name)
             total += member.size
             if total > UNPACKED_MAX:
-                raise Unusable('the archive unpacks to more than %d bytes' % UNPACKED_MAX)
+                raise Unusable('archive', 'the archive unpacks to more than %d bytes' % UNPACKED_MAX,
+                               '> %d' % UNPACKED_MAX)
             os.makedirs(os.path.dirname(target), mode=0o755, exist_ok=True)
             source = tar.extractfile(member)
             with source, open(target, 'wb') as handle:
@@ -315,7 +347,8 @@ def unpack(archive, folder, version=None):
     setup = os.path.join(folder, 'crs-setup.conf.example')
     rules = sorted(glob.glob(os.path.join(folder, 'rules', '*.conf')))
     if not os.path.isfile(setup) or len(rules) < 10:
-        raise Unusable('the archive has no crs-setup.conf.example, or %d rule files' % len(rules))
+        raise Unusable('archive', 'the archive has no crs-setup.conf.example, or %d rule files' % len(rules),
+                       'crs-setup.conf.example, rules/*.conf: %d' % len(rules))
     shutil.copyfile(setup, os.path.join(folder, 'crs-setup.conf'))
     os.chmod(os.path.join(folder, 'crs-setup.conf'), 0o644)
     return found.group(1), len(rules)
@@ -368,7 +401,7 @@ def activate(version, rules, record, run=subprocess.run):
     staged = os.path.join(common.CRS, version + '.new')
     passed, said = httpd_check(staged, run)
     if passed is False:
-        raise Unusable('Apache refused the Core Rule Set %s: %s' % (version, said))
+        raise Unusable('refused', 'Apache refused the Core Rule Set %s: %s' % (version, said), said)
     before = installed().get('version', '')
     final = os.path.join(common.CRS, version)
     if os.path.lexists(final):
@@ -430,7 +463,7 @@ def locked(work):
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
-            return {'status': 'failed', 'message': 'another Apply or a Core Rule Set install is running'}
+            return refused('busy', 'another Apply or a Core Rule Set install is running')
         return work()
 
 
@@ -440,20 +473,21 @@ def install(run=subprocess.run):
         try:
             found = tags()
         except (urllib.error.URLError, OSError, ValueError, http.client.HTTPException) as error:
-            return {'status': 'failed', 'message': "this repository's releases could not be listed: %s" % error}
+            return refused('unlisted', "this repository's releases could not be listed: %s" % error, str(error))
         version = newest(found)
         if not version:
-            return {'status': 'failed', 'message': 'no release of the Core Rule Set %s is published for this '
-                    'plugin yet' % LINE}
+            return refused('none', 'no release of the Core Rule Set %s is published for this plugin yet' % LINE,
+                           line=LINE)
         tag = 'crs-' + version
         try:
             manifest = signed_manifest(tag)
         except Unsigned as reason:
-            return {'status': 'failed', 'message': str(reason), 'tag': tag}
+            return refusal(reason, tag=tag)
         except urllib.error.HTTPError as error:
-            return {'status': 'failed', 'message': 'GitHub refused the manifest of %s (%s)' % (tag, error.code)}
+            return refused('unreachable', 'GitHub refused the manifest of %s (%s)' % (tag, error.code),
+                           '%s: HTTP %s' % (tag, error.code), tag=tag)
         except (urllib.error.URLError, OSError, ValueError, http.client.HTTPException) as error:
-            return {'status': 'failed', 'message': 'could not reach GitHub: %s' % error}
+            return refused('unreachable', 'could not reach GitHub: %s' % error, str(error), tag=tag)
         have = installed()
         if have.get('version') == version and have.get('sha256') == manifest['sha256']:
             return {'status': 'current', 'version': version, 'message': 'the Core Rule Set %s is installed '
@@ -470,10 +504,15 @@ def install(run=subprocess.run):
                 activate(staged, rules, record, run)
             except Unusable as reason:
                 shutil.rmtree(os.path.join(common.CRS, version + '.new'), ignore_errors=True)
-                return {'status': 'failed', 'message': str(reason), 'tag': tag}
-            except (urllib.error.URLError, OSError, http.client.HTTPException) as error:
+                return refusal(reason, tag=tag)
+            except (urllib.error.URLError, http.client.HTTPException) as error:
                 shutil.rmtree(os.path.join(common.CRS, version + '.new'), ignore_errors=True)
-                return {'status': 'failed', 'message': 'the archive of %s could not be installed: %s' % (tag, error)}
+                return refused('unreachable', 'the archive of %s could not be downloaded: %s' % (tag, error),
+                               str(error), tag=tag)
+            except OSError as error:
+                shutil.rmtree(os.path.join(common.CRS, version + '.new'), ignore_errors=True)
+                return refused('write', 'the archive of %s could not be installed: %s' % (tag, error), str(error),
+                               tag=tag)
         return then_apply({'status': 'installed', 'version': version, 'tag': tag, 'signed_with': manifest['key'],
                            'message': 'the Core Rule Set %s installed, signed with %s' % (version, manifest['key'])},
                           run)
@@ -485,15 +524,15 @@ def install_archive(path, sha256, run=subprocess.run):
     def work():
         want = (sha256 or '').strip().lower()
         if not re.fullmatch(r'[0-9a-f]{64}', want):
-            return {'status': 'failed', 'message': 'give the archive\'s SHA-256, 64 hexadecimal digits, as '
-                    'checked with its signature'}
+            return refused('sha256', 'give the archive\'s SHA-256, 64 hexadecimal digits, as checked with its '
+                           'signature')
         try:
             got = sha256_of(path)
         except OSError as error:
-            return {'status': 'failed', 'message': 'the archive cannot be read: %s' % error}
+            return refused('archive', 'the archive cannot be read: %s' % error, str(error))
         if got != want:
-            return {'status': 'failed', 'message': 'the archive is not the one given: SHA-256 %s, not %s' % (
-                got[:16], want[:16])}
+            return refused('mismatch', 'the archive is not the one given: SHA-256 %s, not %s' % (got[:16], want[:16]),
+                           'SHA-256 %s / %s' % (got[:16], want[:16]))
         try:
             version, rules = stage(path)
             record = {'source': 'hand', 'tag': '', 'sha256': got, 'size': os.path.getsize(path), 'signed_with': '',
@@ -502,9 +541,9 @@ def install_archive(path, sha256, run=subprocess.run):
         except Unusable as reason:
             for name in glob.glob(os.path.join(common.CRS, '*.new')):
                 shutil.rmtree(name, ignore_errors=True)
-            return {'status': 'failed', 'message': str(reason)}
+            return refusal(reason)
         except OSError as error:
-            return {'status': 'failed', 'message': 'the archive could not be installed: %s' % error}
+            return refused('write', 'the archive could not be installed: %s' % error, str(error))
         return then_apply({'status': 'installed', 'version': version, 'tag': '', 'signed_with': '',
                            'message': 'the Core Rule Set %s installed by hand' % version}, run)
     return locked(work)
@@ -516,19 +555,18 @@ def check():
     try:
         version = newest(tags())
     except (urllib.error.URLError, OSError, ValueError, http.client.HTTPException) as error:
-        return {'status': 'failed', 'message': "this repository's releases could not be listed: %s" % error,
-                'installed': have.get('version', '')}
+        return refused('unlisted', "this repository's releases could not be listed: %s" % error, str(error),
+                       installed=have.get('version', ''))
     if not version:
-        return {'status': 'none', 'installed': have.get('version', ''), 'message': 'no release of the Core Rule '
-                'Set %s is published for this plugin yet' % LINE}
+        return dict(refused('none', 'no release of the Core Rule Set %s is published for this plugin yet' % LINE,
+                            line=LINE, installed=have.get('version', '')), status='none')
     try:
         manifest = signed_manifest('crs-' + version)
     except Unsigned as reason:
-        return {'status': 'unsigned', 'version': version, 'installed': have.get('version', ''),
-                'message': str(reason)}
+        return dict(refusal(reason, version=version, installed=have.get('version', '')), status='unsigned')
     except (urllib.error.URLError, OSError, ValueError, http.client.HTTPException) as error:
-        return {'status': 'failed', 'version': version, 'installed': have.get('version', ''),
-                'message': 'could not reach GitHub: %s' % error}
+        return refused('unreachable', 'could not reach GitHub: %s' % error, str(error), version=version,
+                       installed=have.get('version', ''))
     newer = have.get('version') != version or have.get('sha256') != manifest['sha256']
     return {'status': 'available' if newer else 'current', 'version': version, 'signed_with': manifest['key'],
             'installed': have.get('version', ''), 'message': ('%s is signed and would be installed' if newer

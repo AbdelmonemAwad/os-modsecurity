@@ -59,7 +59,8 @@ class ServiceController extends ApiControllerBase
         if (!$this->request->isPost()) {
             return ['status' => 'failed'];
         }
-        $result = $this->json('crs install') ?? ['status' => 'failed', 'message' => gettext('No answer could be read.')];
+        $result = $this->json('crs install') ?? ['status' => 'failed', 'code' => 'unreadable',
+            'message' => gettext('No answer could be read.')];
         $result['current'] = $this->statusAction();
         return $result;
     }

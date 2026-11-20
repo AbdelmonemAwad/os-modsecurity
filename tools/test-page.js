@@ -398,7 +398,11 @@ const codes = [['packages', '', 'apache24 and ap24-mod_security are not installe
     ['certificate', 'abc', 'A site\'s certificate is not in System: Trust with its private key: abc'],
     ['start', 'AH00072: make_sock', 'Apache did not run: AH00072: make_sock'],
     ['restored', 'AH00072: make_sock', 'Apache could not run the new configuration, and runs the one before again: AH00072: make_sock'],
-    ['write', 'disk full', 'The settings could not be applied: its own words']];
+    ['busy', '', 'Another Apply or a Core Rule Set install is running: try again once it ends.'],
+    ['write', 'disk full', 'The configuration could not be written, and Apache was left as it was: disk full'],
+    ['config.xml', 'does not parse', 'config.xml could not be read, and Apache was left as it was: does not parse'],
+    ['unreadable', '', 'No answer could be read.'],
+    ['other', 'x', 'The settings could not be applied: its own words']];
 check('each reason by its code, in the page\'s words, the detail after them; an unknown code with its message',
     codes.map(function (c) {
         status(Object.assign({}, base, {state: 'failed', pid: null, last: {status: 'failed', code: c[0], detail: c[1],
@@ -463,8 +467,28 @@ element('crsInstallAct').handlers.click();
 check('Install with nothing newer: said', shown('ms-crs-result'), 'The Core Rule Set 4.25.2 is the newest of its line, and installed.');
 answers[INSTALL] = {status: 'failed', message: 'crs-4.25.3 is not signed yet: it has no crs.json.sig', current: base};
 element('crsInstallAct').handlers.click();
-check('Install refused: said in red with crs.py\'s words', [shown('ms-crs-result'), element('ms-crs-result').attrs.class],
-    ['The Core Rule Set was not installed: crs-4.25.3 is not signed yet: it has no crs.json.sig', 'text-danger']);
+check('Install refused with a code the page has not: said in red with crs.py\'s words', [shown('ms-crs-result'),
+    element('ms-crs-result').attrs.class], ['The Core Rule Set was not installed: crs-4.25.3 is not signed yet: it has no crs.json.sig',
+    'text-danger']);
+const crsCodes = [
+    [{code: 'none', line: '4.25'}, 'No release of the Core Rule Set\'s 4.25 line is published for this plugin yet.'],
+    [{code: 'unsigned', detail: 'crs-4.25.3: crs.json.sig'}, 'The newest release is not signed yet: crs-4.25.3: crs.json.sig'],
+    [{code: 'badsig', detail: 'crs-4.25.3'}, 'The release\'s signature does not verify with a release key of this firewall: crs-4.25.3'],
+    [{code: 'nokeys', detail: 'crs-4.25.3'}, 'This firewall holds no release key to check a release with: crs-4.25.3'],
+    [{code: 'manifest', detail: 'crs-4.25.3: size'}, 'The release\'s signed manifest is not one this firewall takes: crs-4.25.3: size'],
+    [{code: 'unlisted', detail: 'no reference'}, 'The list of this plugin\'s releases could not be read: no reference'],
+    [{code: 'unreachable', detail: '[Errno 8] hostname nor servname'}, 'GitHub could not be reached: [Errno 8] hostname nor servname'],
+    [{code: 'mismatch', detail: 'crs-4.25.3: 10 / 12'}, 'The archive is not the one signed: crs-4.25.3: 10 / 12'],
+    [{code: 'archive', detail: 'coreruleset-4.25.3/../x'}, 'The archive is not one this firewall installs: coreruleset-4.25.3/../x'],
+    [{code: 'refused', detail: 'AH00526: <x>'}, 'Apache refused the configuration with this Core Rule Set, so the one before stays in use: AH00526: <x>'],
+    [{code: 'write', detail: 'No space left on device'}, 'The Core Rule Set could not be written: No space left on device'],
+    [{code: 'busy'}, 'Another Apply or a Core Rule Set install is running: try again once it ends.'],
+    [{code: 'unreadable', message: 'No answer could be read.'}, 'No answer could be read.']];
+check('each refusal of Install by crs.py\'s code, in the page\'s words, its detail after them as text', crsCodes.map(function (c) {
+    answers[INSTALL] = Object.assign({status: 'failed', message: 'its own words', current: base}, c[0]);
+    element('crsInstallAct').handlers.click();
+    return [shown('ms-crs-result'), element('ms-crs-result').inner.indexOf('<x>') === -1];
+}), crsCodes.map(c => [c[1], true]));
 answers[INSTALL] = {status: 'installed', version: '4.25.3', apply: {status: 'failed', code: 'config', detail: 'AH00526'}, current: base};
 element('crsInstallAct').handlers.click();
 check('installed, and Apply refused: both said, in red', [shown('ms-crs-result'), element('ms-crs-result').attrs.class],

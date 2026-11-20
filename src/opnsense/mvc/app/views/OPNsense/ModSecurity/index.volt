@@ -93,8 +93,38 @@
             'certificate': "{{ lang._('A site\'s certificate is not in System: Trust with its private key:') }}",
             'config': "{{ lang._('Apache refused the configuration, and runs the one before:') }}",
             'restored': "{{ lang._('Apache could not run the new configuration, and runs the one before again:') }}",
-            'start': "{{ lang._('Apache did not run:') }}"
+            'start': "{{ lang._('Apache did not run:') }}",
+            'busy': "{{ lang._('Another Apply or a Core Rule Set install is running: try again once it ends.') }}",
+            'write': "{{ lang._('The configuration could not be written, and Apache was left as it was:') }}",
+            'config.xml': "{{ lang._('config.xml could not be read, and Apache was left as it was:') }}",
+            'unreadable': "{{ lang._('No answer could be read.') }}"
         };
+
+        /* why Install took nothing, by crs.py's code, in the page's language; its detail - a release's tag, a
+           field, a file, Apache's or the system's own words - after it */
+        const crs_failures = {
+            'busy': "{{ lang._('Another Apply or a Core Rule Set install is running: try again once it ends.') }}",
+            'unlisted': "{{ lang._('The list of this plugin\'s releases could not be read:') }}",
+            'none': "{{ lang._('No release of the Core Rule Set\'s %s line is published for this plugin yet.') }}",
+            'unsigned': "{{ lang._('The newest release is not signed yet:') }}",
+            'badsig': "{{ lang._('The release\'s signature does not verify with a release key of this firewall:') }}",
+            'nokeys': "{{ lang._('This firewall holds no release key to check a release with:') }}",
+            'manifest': "{{ lang._('The release\'s signed manifest is not one this firewall takes:') }}",
+            'unreachable': "{{ lang._('GitHub could not be reached:') }}",
+            'mismatch': "{{ lang._('The archive is not the one signed:') }}",
+            'archive': "{{ lang._('The archive is not one this firewall installs:') }}",
+            'refused': "{{ lang._('Apache refused the configuration with this Core Rule Set, so the one before stays in use:') }}",
+            'write': "{{ lang._('The Core Rule Set could not be written:') }}",
+            'unreadable': "{{ lang._('No answer could be read.') }}"
+        };
+
+        function crs_failure(data) {
+            const text = crs_failures[data.code];
+            if (text === undefined) {
+                return plain("{{ lang._('The Core Rule Set was not installed:') }}") + ' ' + plain(data.message);
+            }
+            return plain(text).replace('%s', plain(data.line || '')) + (data.detail ? ' ' + plain(data.detail) : '');
+        }
 
         function failure(last) {
             if (!last || !last.code) {
@@ -336,8 +366,8 @@
                 } else if (data && data.status === 'current') {
                     good = true;
                     text = plain("{{ lang._('The Core Rule Set %s is the newest of its line, and installed.') }}").replace('%s', plain(data.version));
-                } else if (data && data.message) {
-                    text = plain("{{ lang._('The Core Rule Set was not installed:') }}") + ' ' + plain(data.message);
+                } else if (data && (data.code || data.message)) {
+                    text = crs_failure(data);
                 }
                 $('#ms-crs-result').attr('class', good ? 'text-muted' : 'text-danger').text(text).show();
                 if (data && data.current) {
