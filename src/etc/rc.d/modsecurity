@@ -1,0 +1,137 @@
+#!/bin/sh
+# Copyright (C) 2026 Abdelmonem Awad <eg2@live.com>. BSD 2-Clause License.
+
+# PROVIDE: modsecurity
+# REQUIRE: LOGIN
+# KEYWORD: shutdown
+
+#
+# The Web Application Firewall's own Apache: httpd of the apache24 package, run with the configuration
+# scripts/modsecurity/setup.py writes (/usr/local/etc/os-modsecurity/httpd.conf) and never the package's
+# own, its pid file /var/run/modsecurity.pid. Apache detaches by itself and starts its children.
+#
+# Whether it runs is config.xml's setting - off by default - read by plugins.inc.d/modsecurity.inc at boot
+# and by the page's Apply. configd and setup.py call this script with the "one" prefix, so rc.conf's switch
+# is not asked: one place decides, not two that can disagree. setup.py writes and tests the configuration
+# before it asks for a start or a reload; this script starts nothing without it.
+#
+# A pid in the pid file is believed only when its process is this Apache: the package's own apache24, or
+# any other httpd, is never signalled.
+
+. /etc/rc.subr
+
+name="modsecurity"
+rcvar=modsecurity_enable
+
+load_rc_config $name
+
+: ${modsecurity_enable:="NO"}
+
+modsecurity_httpd="/usr/local/sbin/httpd"
+modsecurity_conf="/usr/local/etc/os-modsecurity/httpd.conf"
+modsecurity_pid="/var/run/modsecurity.pid"
+modsecurity_run="/var/run/modsecurity"
+
+start_cmd="modsecurity_start"
+stop_cmd="modsecurity_stop"
+status_cmd="modsecurity_status"
+reload_cmd="modsecurity_reload"
+extra_commands="reload"
+
+# The pid of this Apache's parent, from its pid file, when it is alive and runs this configuration.
+modsecurity_pidof()
+{
+	local _pid _junk
+
+	[ -s "${modsecurity_pid}" ] || return 0
+	read _pid _junk < "${modsecurity_pid}" 2> /dev/null
+	case "${_pid}" in
+	''|*[!0-9]*)	return 0 ;;
+	esac
+	[ "${_pid}" -gt 1 ] 2> /dev/null || return 0
+	kill -0 "${_pid}" 2> /dev/null || return 0
+	case "$(ps -ww -o args= -p "${_pid}" 2> /dev/null)" in
+	*httpd*" -f ${modsecurity_conf}"*)	echo "${_pid}" ;;
+	esac
+	return 0
+}
+
+modsecurity_start()
+{
+	local _pid
+
+	_pid=$(modsecurity_pidof)
+	if [ -n "${_pid}" ]; then
+		echo "${name} is already running as pid ${_pid}."
+		return 0
+	fi
+	if [ ! -x "${modsecurity_httpd}" ]; then
+		warn "${name}: ${modsecurity_httpd} is missing: pkg install apache24 ap24-mod_security"
+		return 1
+	fi
+	if [ ! -f "${modsecurity_conf}" ]; then
+		warn "${name}: ${modsecurity_conf} is missing: Apply on the page writes it"
+		return 1
+	fi
+	install -d -o root -g wheel -m 0755 "${modsecurity_run}" || return 1
+	rm -f "${modsecurity_pid}"
+	echo "Starting ${name}."
+	"${modsecurity_httpd}" -f "${modsecurity_conf}" -k start
+}
+
+modsecurity_stop()
+{
+	local _pid _waited
+
+	_pid=$(modsecurity_pidof)
+	if [ -z "${_pid}" ]; then
+		echo "${name} is not running."
+		return 0
+	fi
+	echo "Stopping ${name}."
+	# the parent takes its children with it
+	kill -TERM "${_pid}" 2> /dev/null
+	_waited=0
+	while kill -0 "${_pid}" 2> /dev/null; do
+		if [ ${_waited} -ge 50 ]; then
+			warn "${name}: pid ${_pid} would not stop within 10 seconds"
+			kill -KILL "${_pid}" 2> /dev/null
+			break
+		fi
+		sleep 0.2
+		_waited=$((_waited + 1))
+	done
+	rm -f "${modsecurity_pid}"
+	return 0
+}
+
+# Apply with Apache running: a graceful restart - Apache reads its configuration again, and the requests
+# in progress end on the old one. Not running: started.
+modsecurity_reload()
+{
+	local _pid
+
+	_pid=$(modsecurity_pidof)
+	if [ -z "${_pid}" ]; then
+		modsecurity_start
+		return $?
+	fi
+	echo "Reloading ${name}."
+	kill -USR1 "${_pid}"
+}
+
+# OPNsense reads this line, looking for "not running" before "is running".
+modsecurity_status()
+{
+	local _pid
+
+	_pid=$(modsecurity_pidof)
+	if [ -n "${_pid}" ]; then
+		echo "${name} is running as pid ${_pid}."
+		return 0
+	fi
+	echo "${name} is not running."
+	return 1
+}
+
+run_rc_command "$1"
